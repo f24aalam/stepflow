@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -176,6 +175,3 @@ func padLabel(q string) string {
 
 	return q
 }
-
-// ensure textinput.Blink ticks are forwarded (bubbles requires this)
-var _ = textinput.Blink
