@@ -47,6 +47,7 @@ func (s *TextStep) Init(st styles) tea.Cmd {
 	ti.Width = 30
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(st.marker.GetForeground())
 	ti.TextStyle = lipgloss.NewStyle().Foreground(st.stepAnswer.GetForeground())
+	ti.SetValue(s.defaultVal)
 	s.input = ti
 	return tea.Batch(textinput.Blink, s.input.Focus())
 }
