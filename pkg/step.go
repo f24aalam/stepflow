@@ -27,3 +27,11 @@ type MessageStep interface {
 	UpdateMsg(msg tea.Msg) (done bool, cmd tea.Cmd)
 	HasError() bool
 }
+
+// DynamicStep allows a step to decide which steps should run next.
+// When a DynamicStep completes, the wizard replaces the remaining step tail
+// with the slice returned by NextSteps.
+type DynamicStep interface {
+	Step
+	NextSteps(completed Result) []Step
+}

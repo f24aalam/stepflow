@@ -91,14 +91,29 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // advance records the answer and moves to the next step (or finishes).
 func (m *wizardModel) advance(step Step) tea.Cmd {
+	completedIdx := m.current
 	m.answers = append(m.answers, step.Answer())
-	m.current++
-	if m.current >= len(m.steps) {
-		m.result = make(Result, len(m.steps))
-		for i, s := range m.steps {
-			m.result[s.Key()] = m.answers[i]
-		}
 
+	// Build answers-so-far map for dynamic step planning.
+	completed := make(Result, completedIdx+1)
+	for i := 0; i <= completedIdx; i++ {
+		completed[m.steps[i].Key()] = m.answers[i]
+	}
+
+	// Allow the current step to replace the remaining tail.
+	if ds, ok := step.(DynamicStep); ok {
+		next := ds.NextSteps(completed)
+		// Preserve all completed steps (slice prefix) and swap the tail.
+		m.steps = append(m.steps[:completedIdx+1], next...)
+	}
+
+	m.current = completedIdx + 1
+	if m.current >= len(m.steps) {
+		// Wizard finished: only answers for completed steps exist.
+		m.result = make(Result, len(m.answers))
+		for i := 0; i < len(m.answers); i++ {
+			m.result[m.steps[i].Key()] = m.answers[i]
+		}
 		m.done = true
 		return tea.Quit
 	}
