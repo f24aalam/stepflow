@@ -43,12 +43,13 @@ func (s *TextStep) Question() string { return s.question }
 func (s *TextStep) Init(st styles) tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = s.placeholder
-	ti.CharLimit = 128
-	ti.Width = 30
+	ti.CharLimit = 2048
+	ti.Width = 72
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(st.marker.GetForeground())
 	ti.TextStyle = lipgloss.NewStyle().Foreground(st.stepAnswer.GetForeground())
 	ti.SetValue(s.defaultVal)
 	s.input = ti
+
 	return tea.Batch(textinput.Blink, s.input.Focus())
 }
 
@@ -56,8 +57,10 @@ func (s *TextStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	if msg.String() == "enter" {
 		return true, nil
 	}
+
 	var cmd tea.Cmd
 	s.input, cmd = s.input.Update(msg)
+
 	return false, cmd
 }
 
@@ -71,5 +74,6 @@ func (s *TextStep) Answer() string {
 	if val == "" {
 		return s.defaultVal
 	}
+
 	return val
 }

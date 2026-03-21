@@ -30,6 +30,7 @@ type styles struct {
 	pillNone    lipgloss.Style
 	helper      lipgloss.Style
 	done        lipgloss.Style
+	error       lipgloss.Style
 }
 
 func newStyles(t Theme) styles {
@@ -59,5 +60,6 @@ func newStyles(t Theme) styles {
 		pillNone:    lipgloss.NewStyle().Foreground(t.PillNoneColor).Italic(true),
 		helper:      lipgloss.NewStyle().Foreground(t.HelperTextColor),
 		done:        lipgloss.NewStyle().Foreground(t.DoneColor).Bold(true),
+		error:       lipgloss.NewStyle().Foreground(t.ErrorColor).Bold(true),
 	}
 }

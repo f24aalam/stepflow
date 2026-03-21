@@ -12,19 +12,21 @@ type doneMsg struct{}
 
 // wizardModel is the internal bubbletea model.
 type wizardModel struct {
-	steps   []Step
-	current int
-	answers []string // one per completed step
-	st      styles
-	done    bool
-	failed  bool
-	result  Result
+	steps    []Step
+	current  int
+	answers  []string // one per completed step
+	st       styles
+	showDone bool
+	done     bool
+	failed   bool
+	result   Result
 }
 
-func newWizardModel(steps []Step, st styles) wizardModel {
+func newWizardModel(steps []Step, st styles, showDone bool) wizardModel {
 	return wizardModel{
-		steps: steps,
-		st:    st,
+		steps:    steps,
+		st:       st,
+		showDone: showDone,
 	}
 }
 
@@ -32,6 +34,7 @@ func (m wizardModel) Init() tea.Cmd {
 	if len(m.steps) == 0 {
 		return func() tea.Msg { return doneMsg{} }
 	}
+
 	return m.steps[0].Init(m.st)
 }
 
@@ -115,6 +118,7 @@ func (m *wizardModel) advance(step Step) tea.Cmd {
 			m.result[m.steps[i].Key()] = m.answers[i]
 		}
 		m.done = true
+
 		return tea.Quit
 	}
 
@@ -146,6 +150,11 @@ func (m wizardModel) View() string {
 	}
 
 	if m.done {
+		if !m.showDone {
+			// Keep completed-step history visible, just omit the footer.
+			return b.String()
+		}
+
 		b.WriteString("\n")
 		b.WriteString(m.st.done.Render("✓  All done!"))
 		b.WriteString("\n\n")

@@ -47,6 +47,7 @@ type Theme struct {
 	// Misc
 	HelperTextColor lipgloss.Color
 	DoneColor       lipgloss.Color
+	ErrorColor      lipgloss.Color
 }
 
 // DefaultTheme returns a green-only palette (no gray/red/blue accents).
@@ -78,5 +79,6 @@ func DefaultTheme() Theme {
 		PillNoneColor:       lipgloss.Color("#14532d"),
 		HelperTextColor:     lipgloss.Color("#22c55e"),
 		DoneColor:           lipgloss.Color("#4ade80"),
+		ErrorColor:          lipgloss.Color("#ef4444"),
 	}
 }

@@ -26,6 +26,7 @@ type Wizard struct {
 	steps        []Step
 	theme        Theme
 	useAltScreen bool
+	showDone     bool
 }
 
 // New creates a new Wizard with sensible defaults.
@@ -33,6 +34,7 @@ func New() *Wizard {
 	return &Wizard{
 		theme:        DefaultTheme(),
 		useAltScreen: true,
+		showDone:     true,
 	}
 }
 
@@ -41,6 +43,13 @@ func New() *Wizard {
 // above the TUI. Default is true.
 func (w *Wizard) WithAltScreen(enabled bool) *Wizard {
 	w.useAltScreen = enabled
+	return w
+}
+
+// WithDoneScreen controls whether the completion "All done" screen is shown.
+// Default is true.
+func (w *Wizard) WithDoneScreen(enabled bool) *Wizard {
+	w.showDone = enabled
 	return w
 }
 
@@ -65,12 +74,13 @@ func (w *Wizard) Run() (Result, error) {
 	}
 
 	st := newStyles(w.theme)
-	m := newWizardModel(w.steps, st)
+	m := newWizardModel(w.steps, st, w.showDone)
 
 	var opts []tea.ProgramOption
 	if w.useAltScreen {
 		opts = append(opts, tea.WithAltScreen())
 	}
+
 	p := tea.NewProgram(m, opts...)
 	final, err := p.Run()
 	if err != nil {
@@ -82,6 +92,7 @@ func (w *Wizard) Run() (Result, error) {
 	if !ok || !wm.done || wm.result == nil {
 		return nil, ErrCancelled
 	}
+
 	return wm.result, nil
 }
 
