@@ -23,15 +23,25 @@ import (
 //	    ).
 //	    Run()
 type Wizard struct {
-	steps []Step
-	theme Theme
+	steps        []Step
+	theme        Theme
+	useAltScreen bool
 }
 
 // New creates a new Wizard with sensible defaults.
 func New() *Wizard {
 	return &Wizard{
-		theme: DefaultTheme(),
+		theme:        DefaultTheme(),
+		useAltScreen: true,
 	}
+}
+
+// WithAltScreen controls whether the wizard uses the terminal alternate screen.
+// When false, output printed before Run() (e.g. a banner on stderr) stays visible
+// above the TUI. Default is true.
+func (w *Wizard) WithAltScreen(enabled bool) *Wizard {
+	w.useAltScreen = enabled
+	return w
 }
 
 // WithSteps sets the ordered list of steps for the wizard.
@@ -57,7 +67,11 @@ func (w *Wizard) Run() (Result, error) {
 	st := newStyles(w.theme)
 	m := newWizardModel(w.steps, st)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	var opts []tea.ProgramOption
+	if w.useAltScreen {
+		opts = append(opts, tea.WithAltScreen())
+	}
+	p := tea.NewProgram(m, opts...)
 	final, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)

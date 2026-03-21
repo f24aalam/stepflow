@@ -49,34 +49,34 @@ type Theme struct {
 	DoneColor       lipgloss.Color
 }
 
-// DefaultTheme returns the green-on-dark agentsync theme.
+// DefaultTheme returns a green-only palette (no gray/red/blue accents).
 func DefaultTheme() Theme {
 	return Theme{
 		MarkerColor:         lipgloss.Color("#4ade80"),
-		PipeColor:           lipgloss.Color("#6b6b6b"),
-		StepLabelColor:      lipgloss.Color("#555555"),
-		StepAnswerColor:     lipgloss.Color("#e5e5e5"),
-		ActiveQuestionColor: lipgloss.Color("#e5e5e5"),
-		SectionLineColor:    lipgloss.Color("#2a2a2a"),
-		SectionLabelColor:   lipgloss.Color("#3a3a3a"),
-		AlwaysNoteColor:     lipgloss.Color("#2a6648"),
+		PipeColor:           lipgloss.Color("#15803d"),
+		StepLabelColor:      lipgloss.Color("#22c55e"),
+		StepAnswerColor:     lipgloss.Color("#bbf7d0"),
+		ActiveQuestionColor: lipgloss.Color("#ecfdf5"),
+		SectionLineColor:    lipgloss.Color("#14532d"),
+		SectionLabelColor:   lipgloss.Color("#166534"),
+		AlwaysNoteColor:     lipgloss.Color("#4ade80"),
 		SelectedDotColor:    lipgloss.Color("#4ade80"),
-		UnselectedDotColor:  lipgloss.Color("#333333"),
+		UnselectedDotColor:  lipgloss.Color("#14532d"),
 		FocusBarColor:       lipgloss.Color("#4ade80"),
 		FocusLabelColor:     lipgloss.Color("#4ade80"),
-		ItemPathColor:       lipgloss.Color("#3a3a3a"),
+		ItemPathColor:       lipgloss.Color("#15803d"),
 		SearchSlashColor:    lipgloss.Color("#4ade80"),
-		SearchTextColor:     lipgloss.Color("#e5e5e5"),
-		SearchCursorFg:      lipgloss.Color("#000000"),
+		SearchTextColor:     lipgloss.Color("#ecfdf5"),
+		SearchCursorFg:      lipgloss.Color("#052e16"),
 		SearchCursorBg:      lipgloss.Color("#4ade80"),
-		ScrollPosColor:      lipgloss.Color("#3a3a3a"),
-		ScrollTotalColor:    lipgloss.Color("#2a2a2a"),
-		PillBracketColor:    lipgloss.Color("#2a6648"),
+		ScrollPosColor:      lipgloss.Color("#22c55e"),
+		ScrollTotalColor:    lipgloss.Color("#166534"),
+		PillBracketColor:    lipgloss.Color("#15803d"),
 		PillItemColor:       lipgloss.Color("#4ade80"),
-		PillDotColor:        lipgloss.Color("#2a6648"),
-		PillMoreColor:       lipgloss.Color("#4ade80"),
-		PillNoneColor:       lipgloss.Color("#2a2a2a"),
-		HelperTextColor:     lipgloss.Color("#4a4a4a"),
+		PillDotColor:        lipgloss.Color("#22c55e"),
+		PillMoreColor:       lipgloss.Color("#86efac"),
+		PillNoneColor:       lipgloss.Color("#14532d"),
+		HelperTextColor:     lipgloss.Color("#22c55e"),
 		DoneColor:           lipgloss.Color("#4ade80"),
 	}
 }
