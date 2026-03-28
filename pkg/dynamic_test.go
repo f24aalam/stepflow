@@ -78,6 +78,38 @@ func TestDynamicStepReplacesTail(t *testing.T) {
 	}
 }
 
+func TestDynamicStepNilDoesNotReplaceTail(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	ds := dummyDynamicStep{
+		dummyStep: dummyStep{key: "scan", q: "Scan", ans: "done"},
+		next:      nil, // no opinion
+	}
+
+	old := dummyStep{key: "old", q: "Old", ans: "old"}
+
+	m := newWizardModel([]Step{ds, old}, st, true)
+	m.current = 0
+
+	_ = m.advance(ds)
+
+	if len(m.steps) != 2 {
+		t.Fatalf("expected 2 steps to remain, got %d", len(m.steps))
+	}
+
+	if m.steps[1].Key() != "old" {
+		t.Fatalf("expected step[1] key to be old, got %q", m.steps[1].Key())
+	}
+
+	if m.current != 1 {
+		t.Fatalf("expected current=1, got %d", m.current)
+	}
+
+	if m.done {
+		t.Fatalf("wizard should not be done yet")
+	}
+}
+
 func TestDynamicStepEmptyNextFinishesWizard(t *testing.T) {
 	st := newStyles(DefaultTheme())
 

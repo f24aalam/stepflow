@@ -105,9 +105,10 @@ func (m *wizardModel) advance(step Step) tea.Cmd {
 
 	// Allow the current step to replace the remaining tail.
 	if ds, ok := step.(DynamicStep); ok {
-		next := ds.NextSteps(completed)
-		// Preserve all completed steps (slice prefix) and swap the tail.
-		m.steps = append(m.steps[:completedIdx+1], next...)
+		if next := ds.NextSteps(completed); next != nil {
+			// Preserve all completed steps (slice prefix) and swap the tail.
+			m.steps = append(m.steps[:completedIdx+1], next...)
+		}
 	}
 
 	m.current = completedIdx + 1
