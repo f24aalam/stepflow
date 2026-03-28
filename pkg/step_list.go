@@ -38,6 +38,7 @@ type ListStep struct {
 	cursor      int
 	offset      int
 	search      string
+	next        func(Result) []Step
 
 	// pinned section shown above the interactive list (read-only)
 	pinnedTitle string
@@ -76,6 +77,12 @@ func (s *ListStep) VisibleRows(n int) *ListStep {
 	return s
 }
 
+// WithNext attaches a dynamic step planner.
+func (s *ListStep) WithNext(fn func(Result) []Step) *ListStep {
+	s.next = fn
+	return s
+}
+
 // Pinned adds a read-only section above the interactive list.
 func (s *ListStep) Pinned(title, note string, items ...string) *ListStep {
 	s.pinnedTitle = title
@@ -104,6 +111,14 @@ func (s *ListStep) PreSelect(labels ...string) *ListStep {
 func (s *ListStep) Key() string           { return s.key }
 func (s *ListStep) Question() string      { return s.question }
 func (s *ListStep) Init(_ styles) tea.Cmd { return nil }
+
+// NextSteps satisfies the DynamicStep interface.
+func (s *ListStep) NextSteps(completed Result) []Step {
+	if s.next != nil {
+		return s.next(completed)
+	}
+	return nil
+}
 
 func (s *ListStep) filtered() []int {
 	var out []int
@@ -311,6 +326,10 @@ func (s *ListStep) View(st styles) string {
 	b.WriteString("\n  " + st.helper.Render(hint) + "\n")
 
 	return b.String()
+}
+
+func (s *ListStep) ResultView(st styles) string {
+	return st.stepAnswer.Render(s.Answer())
 }
 
 func (s *ListStep) selectedLabels() []string {

@@ -143,7 +143,7 @@ func (m wizardModel) View() string {
 
 		b.WriteString(fmt.Sprintf("%s  %s\n",
 			m.st.pipe.Render("│"),
-			m.st.stepAnswer.Render(answer),
+			step.ResultView(m.st),
 		))
 
 		b.WriteString(m.st.pipe.Render("│") + "\n")

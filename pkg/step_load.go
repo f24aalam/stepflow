@@ -48,6 +48,7 @@ type LoadStep struct {
 	key      string
 	question string
 	work     WorkFunc
+	next     func(Result) []Step
 
 	// runtime state (populated in Init)
 	statusCh chan string
@@ -79,9 +80,23 @@ func (s *LoadStep) Run(fn WorkFunc) *LoadStep {
 	return s
 }
 
+// WithNext attaches a dynamic step planner.
+func (s *LoadStep) WithNext(fn func(Result) []Step) *LoadStep {
+	s.next = fn
+	return s
+}
+
 func (s *LoadStep) Key() string      { return s.key }
 func (s *LoadStep) Question() string { return s.question }
 func (s *LoadStep) Answer() string   { return s.answer }
+
+// NextSteps satisfies the DynamicStep interface.
+func (s *LoadStep) NextSteps(completed Result) []Step {
+	if s.next != nil {
+		return s.next(completed)
+	}
+	return nil
+}
 
 // Init launches the work goroutine and kicks off the spinner tick.
 func (s *LoadStep) Init(st styles) tea.Cmd {
@@ -174,4 +189,12 @@ func (s *LoadStep) View(st styles) string {
 	))
 
 	return b.String()
+}
+
+func (s *LoadStep) ResultView(st styles) string {
+	if s.failed {
+		return st.error.Render(s.errMsg)
+	}
+
+	return st.stepAnswer.Render(s.Answer())
 }

@@ -15,6 +15,8 @@ type Step interface {
 	Update(msg tea.KeyMsg) (done bool, cmd tea.Cmd)
 	// View renders the interactive portion of the step.
 	View(s styles) string
+	// ResultView renders the step's answer in the history list.
+	ResultView(s styles) string
 	// Answer returns the final string value after the step completes.
 	Answer() string
 }

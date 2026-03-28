@@ -15,6 +15,7 @@ type TextStep struct {
 	placeholder string
 	defaultVal  string
 	input       textinput.Model
+	next        func(Result) []Step
 }
 
 // Text creates a new free-text step.
@@ -37,8 +38,22 @@ func (s *TextStep) Default(d string) *TextStep {
 	return s
 }
 
+// WithNext attaches a dynamic step planner.
+func (s *TextStep) WithNext(fn func(Result) []Step) *TextStep {
+	s.next = fn
+	return s
+}
+
 func (s *TextStep) Key() string      { return s.key }
 func (s *TextStep) Question() string { return s.question }
+
+// NextSteps satisfies the DynamicStep interface.
+func (s *TextStep) NextSteps(completed Result) []Step {
+	if s.next != nil {
+		return s.next(completed)
+	}
+	return nil
+}
 
 func (s *TextStep) Init(st styles) tea.Cmd {
 	ti := textinput.New()
@@ -67,6 +82,10 @@ func (s *TextStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 func (s *TextStep) View(st styles) string {
 	return s.input.View() + "\n" +
 		"\n" + st.helper.Render("enter to confirm") + "\n"
+}
+
+func (s *TextStep) ResultView(st styles) string {
+	return st.stepAnswer.Render(s.Answer())
 }
 
 func (s *TextStep) Answer() string {

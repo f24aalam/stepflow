@@ -24,6 +24,7 @@ func (d dummyStep) Init(_ styles) tea.Cmd {
 }
 func (d dummyStep) Update(_ tea.KeyMsg) (bool, tea.Cmd) { return false, nil }
 func (d dummyStep) View(_ styles) string                { return d.view }
+func (d dummyStep) ResultView(s styles) string          { return s.stepAnswer.Render(d.ans) }
 func (d dummyStep) Answer() string                      { return d.ans }
 
 type dummyDynamicStep struct {

@@ -13,6 +13,7 @@ type ConfirmStep struct {
 	question string
 	cursor   int // 0 = Yes, 1 = No
 	defVal   string
+	next     func(Result) []Step
 }
 
 // Confirm creates a new yes/no confirmation step.
@@ -31,9 +32,23 @@ func (s *ConfirmStep) Default(d string) *ConfirmStep {
 	return s
 }
 
+// WithNext attaches a dynamic step planner.
+func (s *ConfirmStep) WithNext(fn func(Result) []Step) *ConfirmStep {
+	s.next = fn
+	return s
+}
+
 func (s *ConfirmStep) Key() string           { return s.key }
 func (s *ConfirmStep) Question() string      { return s.question }
 func (s *ConfirmStep) Init(_ styles) tea.Cmd { return nil }
+
+// NextSteps satisfies the DynamicStep interface.
+func (s *ConfirmStep) NextSteps(completed Result) []Step {
+	if s.next != nil {
+		return s.next(completed)
+	}
+	return nil
+}
 
 func (s *ConfirmStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	switch msg.String() {
@@ -62,6 +77,10 @@ func (s *ConfirmStep) View(st styles) string {
 	b.WriteString(st.helper.Render("↑↓ move · enter confirm") + "\n")
 
 	return b.String()
+}
+
+func (s *ConfirmStep) ResultView(st styles) string {
+	return st.stepAnswer.Render(s.Answer())
 }
 
 func (s *ConfirmStep) Answer() string {

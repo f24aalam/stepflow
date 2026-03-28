@@ -11,6 +11,7 @@ type InfoStep struct {
 	key      string
 	question string
 	body     string
+	next     func(Result) []Step
 }
 
 // Info creates a non-interactive details step.
@@ -24,9 +25,23 @@ func (s *InfoStep) Body(text string) *InfoStep {
 	return s
 }
 
+// WithNext attaches a dynamic step planner.
+func (s *InfoStep) WithNext(fn func(Result) []Step) *InfoStep {
+	s.next = fn
+	return s
+}
+
 func (s *InfoStep) Key() string           { return s.key }
 func (s *InfoStep) Question() string      { return s.question }
 func (s *InfoStep) Init(_ styles) tea.Cmd { return nil }
+
+// NextSteps satisfies the DynamicStep interface.
+func (s *InfoStep) NextSteps(completed Result) []Step {
+	if s.next != nil {
+		return s.next(completed)
+	}
+	return nil
+}
 
 func (s *InfoStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	if msg.String() == "enter" {
@@ -51,6 +66,10 @@ func (s *InfoStep) View(st styles) string {
 	b.WriteString("\n" + st.helper.Render("enter to continue") + "\n")
 
 	return b.String()
+}
+
+func (s *InfoStep) ResultView(st styles) string {
+	return st.stepAnswer.Render(s.Answer())
 }
 
 func (s *InfoStep) Answer() string {
