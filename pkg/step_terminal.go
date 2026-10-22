@@ -1,9 +1,8 @@
 package stepflow
 
 import (
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 )
 
 type terminalKind int
@@ -13,119 +12,73 @@ const (
 	terminalKindError
 )
 
-// TerminalStep renders a final success/error message and exits on Enter.
 type TerminalStep struct {
-	key      string
-	question string
-	body     string
-	kind     terminalKind
-	next     func(Result) []Step
+	key, question, body string
+	kind                terminalKind
+	next                func(Result) []Step
 }
 
-// Success renders a final success message in primary/done color.
-func Success(key, question string) *TerminalStep {
-	return &TerminalStep{key: key, question: question, kind: terminalKindSuccess}
+func Success(key, q string) *TerminalStep { return &TerminalStep{key: key, question: q} }
+func Error(key, q string) *TerminalStep {
+	return &TerminalStep{key: key, question: q, kind: terminalKindError}
 }
-
-// Error renders a final error message in red.
-func Error(key, question string) *TerminalStep {
-	return &TerminalStep{key: key, question: question, kind: terminalKindError}
-}
-
-func (s *TerminalStep) Body(text string) *TerminalStep {
-	s.body = text
-	return s
-}
-
-// WithNext attaches a dynamic step planner.
-func (s *TerminalStep) WithNext(fn func(Result) []Step) *TerminalStep {
-	s.next = fn
-	return s
-}
-
-func (s *TerminalStep) Key() string      { return s.key }
-func (s *TerminalStep) Question() string { return s.question }
-
-// NextSteps satisfies the DynamicStep interface.
-func (s *TerminalStep) NextSteps(completed Result) []Step {
+func (s *TerminalStep) Body(v string) *TerminalStep                  { s.body = v; return s }
+func (s *TerminalStep) WithNext(f func(Result) []Step) *TerminalStep { s.next = f; return s }
+func (s *TerminalStep) Key() string                                  { return s.key }
+func (s *TerminalStep) Question() string                             { return s.question }
+func (s *TerminalStep) NextSteps(r Result) []Step {
 	if s.next != nil {
-		return s.next(completed)
+		return s.next(r)
 	}
 	return nil
 }
 
 type termDoneMsg struct{}
 
-func (s *TerminalStep) Init(_ styles) tea.Cmd {
-	// If no next step is provided, we auto-advance (finish) instantly.
+func (s *TerminalStep) Init(styles) tea.Cmd {
 	if s.next == nil {
 		return func() tea.Msg { return termDoneMsg{} }
 	}
 	return nil
 }
-
-// UpdateMsg satisfies MessageStep — allows auto-completion.
 func (s *TerminalStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
 	if _, ok := msg.(termDoneMsg); ok {
 		return true, nil
 	}
-	return false, nil
-}
-
-func (s *TerminalStep) HasError() bool { return false }
-
-func (s *TerminalStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
-	if msg.String() == "enter" {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
 		return true, nil
 	}
-
 	return false, nil
 }
-
+func (s *TerminalStep) HasError() bool                      { return false }
+func (s *TerminalStep) Update(k tea.KeyMsg) (bool, tea.Cmd) { return k.String() == "enter", nil }
 func (s *TerminalStep) View(st styles) string {
 	if s.next == nil {
-		// When auto-completing, we render nothing in active view;
-		// it immediately collapses to history view which uses Answer().
 		return ""
 	}
-
+	v := ""
 	body := strings.TrimSpace(s.body)
 	if body == "" {
 		body = "Done."
 	}
-
-	lines := strings.Split(body, "\n")
-	var b strings.Builder
-
-	for _, line := range lines {
+	for _, line := range strings.Split(body, "\n") {
 		if s.kind == terminalKindError {
-			b.WriteString("   " + st.error.Render(line) + "\n")
+			v += "   " + st.error.Render(line) + "\n"
 		} else {
-			b.WriteString("   " + st.done.Render(line) + "\n")
+			v += "   " + st.done.Render(line) + "\n"
 		}
 	}
-	b.WriteString("\n" + st.helper.Render("enter to exit") + "\n")
-
-	return b.String()
+	return v + st.helper.Render("enter to continue") + "\n"
 }
-
 func (s *TerminalStep) ResultView(st styles) string {
-	body := strings.TrimSpace(s.body)
-	if body == "" {
-		body = "Done."
-	}
-
 	if s.kind == terminalKindError {
-		return st.error.Render(body)
+		return st.error.Render(s.Answer())
 	}
-
-	return st.done.Render(body)
+	return st.done.Render(s.Answer())
 }
-
 func (s *TerminalStep) Answer() string {
 	if s.body != "" {
 		return s.body
 	}
-
 	return "done"
 }

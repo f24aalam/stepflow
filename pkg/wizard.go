@@ -1,100 +1,85 @@
 package stepflow
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"os"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Wizard is the entry point for building and running a TUI wizard.
-//
-// Usage:
-//
-//	result, err := stepflow.New().
-//	    WithTheme(stepflow.DefaultTheme()).
-//	    WithSteps(
-//	        stepflow.Text("name", "Project name").Default("my-project"),
-//	        stepflow.Confirm("guidelines", "Add guidelines?"),
-//	        stepflow.List("agents", "Select agents").
-//	            Items(stepflow.Item("Claude Code", ".claude/skills")).
-//	            MultiSelect(true),
-//	    ).
-//	    Run()
+var ErrCancelled = errors.New("stepflow: wizard cancelled by user")
+
 type Wizard struct {
-	steps        []Step
-	theme        Theme
-	useAltScreen bool
-	showDone     bool
+	steps                  []Step
+	theme                  Theme
+	useAltScreen, showDone bool
 }
 
-// New creates a new Wizard with sensible defaults.
-func New() *Wizard {
-	return &Wizard{
-		theme:        DefaultTheme(),
-		useAltScreen: true,
-		showDone:     true,
+func New() *Wizard                                    { return &Wizard{theme: DefaultTheme(), useAltScreen: false, showDone: true} }
+func (w *Wizard) WithAltScreen(enabled bool) *Wizard  { w.useAltScreen = enabled; return w }
+func (w *Wizard) WithDoneScreen(enabled bool) *Wizard { w.showDone = enabled; return w }
+func (w *Wizard) WithSteps(steps ...Step) *Wizard     { w.steps = steps; return w }
+func (w *Wizard) WithTheme(t Theme) *Wizard           { w.theme = t; return w }
+func (w *Wizard) Run() (Result, error)                { return w.RunContext(context.Background()) }
+func (w *Wizard) RunContext(ctx context.Context) (Result, error) {
+	if err := validateSteps(w.steps); err != nil {
+		return nil, err
 	}
-}
-
-// WithAltScreen controls whether the wizard uses the terminal alternate screen.
-// When false, output printed before Run() (e.g. a banner on stderr) stays visible
-// above the TUI. Default is true.
-func (w *Wizard) WithAltScreen(enabled bool) *Wizard {
-	w.useAltScreen = enabled
-	return w
-}
-
-// WithDoneScreen controls whether the completion "All done" screen is shown.
-// Default is true.
-func (w *Wizard) WithDoneScreen(enabled bool) *Wizard {
-	w.showDone = enabled
-	return w
-}
-
-// WithSteps sets the ordered list of steps for the wizard.
-func (w *Wizard) WithSteps(steps ...Step) *Wizard {
-	w.steps = steps
-	return w
-}
-
-// WithTheme sets a custom color theme.
-func (w *Wizard) WithTheme(t Theme) *Wizard {
-	w.theme = t
-	return w
-}
-
-// Run starts the interactive TUI and blocks until the user completes or
-// cancels all steps. Returns the collected answers as a Result (map[string]string).
-// Returns ErrCancelled if the user pressed ctrl+c before finishing.
-func (w *Wizard) Run() (Result, error) {
-	if len(w.steps) == 0 {
-		return Result{}, errors.New("tui: no steps configured")
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-
-	st := newStyles(w.theme)
-	m := newWizardModel(w.steps, st, w.showDone)
-
-	var opts []tea.ProgramOption
+	for _, s := range w.steps {
+		if l, ok := s.(*LoadStep); ok {
+			l.ctx = ctx
+		}
+	}
+	m := newWizardModel(w.steps, newStyles(w.theme), w.showDone)
+	opts := []tea.ProgramOption{tea.WithContext(ctx)}
 	if w.useAltScreen {
 		opts = append(opts, tea.WithAltScreen())
 	}
-
-	p := tea.NewProgram(m, opts...)
-	final, err := p.Run()
+	final, err := tea.NewProgram(m, opts...).Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 		return nil, err
 	}
-
-	wm, ok := final.(wizardModel)
-	if !ok || !wm.done || wm.result == nil {
+	f, ok := final.(wizardModel)
+	if !ok {
+		return nil, errors.New("stepflow: unexpected program model")
+	}
+	if f.failure != nil {
+		return nil, f.failure
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !f.done || f.result == nil {
 		return nil, ErrCancelled
 	}
-
-	return wm.result, nil
+	return f.result, nil
 }
-
-// ErrCancelled is returned when the user quits before completing all steps.
-var ErrCancelled = errors.New("tui: wizard cancelled by user")
+func validateSteps(steps []Step) error {
+	if len(steps) == 0 {
+		return errors.New("stepflow: no steps configured")
+	}
+	seen := map[string]bool{}
+	for i, s := range steps {
+		if s == nil {
+			return fmt.Errorf("stepflow: step %d is nil", i)
+		}
+		k := s.Key()
+		if k == "" {
+			return fmt.Errorf("stepflow: step %d has empty key", i)
+		}
+		if seen[k] {
+			return fmt.Errorf("stepflow: duplicate step key %q", k)
+		}
+		seen[k] = true
+		if l, ok := s.(*LoadStep); ok && l.work == nil && l.contextWork == nil {
+			return fmt.Errorf("stepflow: load step %q has no worker", k)
+		}
+		if l, ok := s.(*ListStep); ok && l.visibleRows <= 0 {
+			return fmt.Errorf("stepflow: list step %q needs positive VisibleRows", k)
+		}
+	}
+	return nil
+}

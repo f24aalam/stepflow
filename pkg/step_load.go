@@ -1,200 +1,123 @@
 package stepflow
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"strings"
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"time"
 )
 
-// ── internal messages ─────────────────────────────────────────────────────────
-
 type loadTickMsg struct{}
-type loadStatusMsg string
 type loadDoneMsg struct{ value string }
 type loadErrMsg struct{ err error }
-
-// ── spinner ───────────────────────────────────────────────────────────────────
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func spinnerTick() tea.Cmd {
-	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
-		return loadTickMsg{}
-	})
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return loadTickMsg{} })
 }
 
-// ── WorkFunc ──────────────────────────────────────────────────────────────────
-
-// WorkFunc is the signature for background work passed to a LoadStep.
-// Send human-readable status strings to the status channel to update the
-// spinner message live. Return a result string and any error when done.
-//
-//	func(status chan<- string) (string, error) {
-//	    status <- "resolving host…"
-//	    v, err := fetchVersion()
-//	    return v, err
-//	}
 type WorkFunc func(status chan<- string) (string, error)
-
-// ── LoadStep ──────────────────────────────────────────────────────────────────
-
-// LoadStep displays an animated spinner + live status message while running a
-// background WorkFunc. On success it auto-advances to the next step. On error
-// it freezes with a red ✗ and halts the wizard.
+type ContextWorkFunc func(context.Context, chan<- string) (string, error)
 type LoadStep struct {
-	key      string
-	question string
-	work     WorkFunc
-	next     func(Result) []Step
-
-	// runtime state (populated in Init)
-	statusCh chan string
-	frame    int
-	status   string
-	answer   string
-	finished bool
-	failed   bool
-	errMsg   string
+	key, question  string
+	work           WorkFunc
+	contextWork    ContextWorkFunc
+	ctx            context.Context
+	statusCh       chan string
+	frame          int
+	status, answer string
+	finished       bool
+	failure        error
+	next           func(Result) []Step
 }
 
-// Load creates a new loading step.
-//
-// Usage:
-//
-//	stepflow.Load("version", "Fetching latest release").
-//	    Run(func(status chan<- string) (string, error) {
-//	        status <- "contacting registry…"
-//	        v, err := fetchLatestVersion()
-//	        return v, err
-//	    })
-func Load(key, question string) *LoadStep {
-	return &LoadStep{key: key, question: question}
-}
+func Load(key, question string) *LoadStep     { return &LoadStep{key: key, question: question} }
+func (s *LoadStep) Run(fn WorkFunc) *LoadStep { s.work = fn; s.contextWork = nil; return s }
 
-// Run attaches the work function and returns the step.
-func (s *LoadStep) Run(fn WorkFunc) *LoadStep {
-	s.work = fn
+// RunContext gives the worker cancellation support. Status sends should use a select on ctx.Done().
+func (s *LoadStep) RunContext(fn ContextWorkFunc) *LoadStep {
+	s.contextWork = fn
+	s.work = nil
 	return s
 }
-
-// WithNext attaches a dynamic step planner.
-func (s *LoadStep) WithNext(fn func(Result) []Step) *LoadStep {
-	s.next = fn
-	return s
-}
-
-func (s *LoadStep) Key() string      { return s.key }
-func (s *LoadStep) Question() string { return s.question }
-func (s *LoadStep) Answer() string   { return s.answer }
-
-// NextSteps satisfies the DynamicStep interface.
-func (s *LoadStep) NextSteps(completed Result) []Step {
+func (s *LoadStep) WithNext(f func(Result) []Step) *LoadStep { s.next = f; return s }
+func (s *LoadStep) Key() string                              { return s.key }
+func (s *LoadStep) Question() string                         { return s.question }
+func (s *LoadStep) Answer() string                           { return s.answer }
+func (s *LoadStep) NextSteps(r Result) []Step {
 	if s.next != nil {
-		return s.next(completed)
+		return s.next(r)
 	}
 	return nil
 }
-
-// Init launches the work goroutine and kicks off the spinner tick.
-func (s *LoadStep) Init(st styles) tea.Cmd {
-	s.status = "working…"
+func (s *LoadStep) Init(styles) tea.Cmd {
 	s.frame = 0
+	s.status = "working…"
+	s.answer = ""
 	s.finished = false
-	s.failed = false
-	s.statusCh = make(chan string, 16)
-
+	s.failure = nil
+	s.statusCh = make(chan string, 64)
 	ch := s.statusCh
-
-	workCmd := func() tea.Msg {
-		val, err := s.work(ch)
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return tea.Batch(spinnerTick(), func() tea.Msg {
+		var v string
+		var err error
+		if s.contextWork != nil {
+			v, err = s.contextWork(ctx, ch)
+		} else if s.work != nil {
+			v, err = s.work(ch)
+		} else {
+			err = errors.New("stepflow: missing loading worker")
+		}
 		close(ch)
 		if err != nil {
 			return loadErrMsg{err}
 		}
-		return loadDoneMsg{val}
-	}
-
-	return tea.Batch(spinnerTick(), tea.Cmd(workCmd))
+		return loadDoneMsg{v}
+	})
 }
-
-// UpdateMsg satisfies MessageStep — handles spinner ticks and goroutine results.
-func (s *LoadStep) UpdateMsg(msg tea.Msg) (done bool, cmd tea.Cmd) {
+func (s *LoadStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
 	switch m := msg.(type) {
-
 	case loadTickMsg:
 		for {
 			select {
-			case txt, open := <-s.statusCh:
-				if !open {
+			case v, ok := <-s.statusCh:
+				if !ok {
 					goto drained
 				}
-				s.status = txt
+				s.status = v
 			default:
 				goto drained
 			}
 		}
 	drained:
-		if !s.finished && !s.failed {
-			s.frame = (s.frame + 1) % len(spinnerFrames)
+		if !s.finished && s.failure == nil {
 			return false, spinnerTick()
 		}
-
 	case loadDoneMsg:
 		s.answer = m.value
 		s.finished = true
 		return true, nil
-
 	case loadErrMsg:
-		s.failed = true
-		s.errMsg = m.err.Error()
-		return false, nil
+		s.failure = m.err
 	}
-
 	return false, nil
 }
-
-// Update satisfies the Step interface for key messages (no-op while loading).
-func (s *LoadStep) Update(_ tea.KeyMsg) (bool, tea.Cmd) { return false, nil }
-
-// HasError reports whether the work func returned an error.
-func (s *LoadStep) HasError() bool { return s.failed }
-
-// View renders the spinner frame + current status message.
+func (s *LoadStep) Update(tea.KeyMsg) (bool, tea.Cmd) { return false, nil }
+func (s *LoadStep) HasError() bool                    { return s.failure != nil }
+func (s *LoadStep) StepError() error                  { return s.failure }
 func (s *LoadStep) View(st styles) string {
-	var b strings.Builder
-
-	if s.failed {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5555"))
-		b.WriteString(fmt.Sprintf("  %s  %s\n\n",
-			errStyle.Render("✗"),
-			errStyle.Render(s.errMsg),
-		))
-
-		return b.String()
+	if s.failure != nil {
+		return "  " + st.error.Render("✗ "+s.failure.Error()) + "\n"
 	}
-
 	if s.finished {
 		return ""
 	}
-
-	spinStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#4ade80")).Bold(true)
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6b6b6b"))
-
-	b.WriteString(fmt.Sprintf("  %s  %s\n\n",
-		spinStyle.Render(spinnerFrames[s.frame]),
-		statusStyle.Render(s.status),
-	))
-
-	return b.String()
+	return fmt.Sprintf("  %s  %s\n", st.marker.Render(spinnerFrames[s.frame]), st.helper.Render(s.status))
 }
-
-func (s *LoadStep) ResultView(st styles) string {
-	if s.failed {
-		return st.error.Render(s.errMsg)
-	}
-
-	return st.stepAnswer.Render(s.Answer())
-}
+func (s *LoadStep) ResultView(st styles) string { return st.stepAnswer.Render(s.answer) }

@@ -1,57 +1,37 @@
 package stepflow
 
 import (
-	"fmt"
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 )
 
-// ConfirmStep is a two-option Yes / No selection step.
 type ConfirmStep struct {
-	key      string
-	question string
-	cursor   int // 0 = Yes, 1 = No
-	defVal   string
-	next     func(Result) []Step
+	key, question string
+	cursor        int
+	next          func(Result) []Step
 }
 
-// Confirm creates a new yes/no confirmation step.
-func Confirm(key, question string) *ConfirmStep {
-	return &ConfirmStep{key: key, question: question, defVal: "Yes"}
-}
-
-// Default sets which option is pre-selected ("Yes" or "No").
+func Confirm(key, question string) *ConfirmStep { return &ConfirmStep{key: key, question: question} }
 func (s *ConfirmStep) Default(d string) *ConfirmStep {
 	if strings.EqualFold(d, "no") {
 		s.cursor = 1
 	} else {
 		s.cursor = 0
 	}
-	s.defVal = d
 	return s
 }
-
-// WithNext attaches a dynamic step planner.
-func (s *ConfirmStep) WithNext(fn func(Result) []Step) *ConfirmStep {
-	s.next = fn
-	return s
-}
-
-func (s *ConfirmStep) Key() string           { return s.key }
-func (s *ConfirmStep) Question() string      { return s.question }
-func (s *ConfirmStep) Init(_ styles) tea.Cmd { return nil }
-
-// NextSteps satisfies the DynamicStep interface.
-func (s *ConfirmStep) NextSteps(completed Result) []Step {
+func (s *ConfirmStep) WithNext(f func(Result) []Step) *ConfirmStep { s.next = f; return s }
+func (s *ConfirmStep) Key() string                                 { return s.key }
+func (s *ConfirmStep) Question() string                            { return s.question }
+func (s *ConfirmStep) NextSteps(r Result) []Step {
 	if s.next != nil {
-		return s.next(completed)
+		return s.next(r)
 	}
 	return nil
 }
-
-func (s *ConfirmStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
-	switch msg.String() {
+func (s *ConfirmStep) Init(styles) tea.Cmd { return nil }
+func (s *ConfirmStep) Update(k tea.KeyMsg) (bool, tea.Cmd) {
+	switch k.String() {
 	case "up", "k":
 		s.cursor = 0
 	case "down", "j":
@@ -61,32 +41,21 @@ func (s *ConfirmStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	}
 	return false, nil
 }
-
 func (s *ConfirmStep) View(st styles) string {
-	var b strings.Builder
-	for i, opt := range []string{"Yes", "No"} {
+	v := ""
+	for i, label := range []string{"Yes", "No"} {
 		if i == s.cursor {
-			b.WriteString(fmt.Sprintf("  %s  %s\n",
-				st.focusBar.Render("›"),
-				st.focusLabel.Render(opt),
-			))
+			v += "  " + st.focusBar.Render("›") + "  " + st.focusLabel.Render(label) + "\n"
 		} else {
-			b.WriteString(fmt.Sprintf("     %s\n", st.stepAnswer.Render(opt)))
+			v += "     " + st.stepAnswer.Render(label) + "\n"
 		}
 	}
-	b.WriteString(st.helper.Render("↑↓ move · enter confirm") + "\n")
-
-	return b.String()
+	return v + st.helper.Render("↑↓ move · enter confirm") + "\n"
 }
-
-func (s *ConfirmStep) ResultView(st styles) string {
-	return st.stepAnswer.Render(s.Answer())
-}
-
+func (s *ConfirmStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
 func (s *ConfirmStep) Answer() string {
 	if s.cursor == 0 {
 		return "Yes"
 	}
-
 	return "No"
 }

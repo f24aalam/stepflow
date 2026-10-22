@@ -2,83 +2,22 @@ package stepflow
 
 import "github.com/charmbracelet/lipgloss"
 
-// Theme controls every color in the wizard.
+// Theme configures the colors used throughout the wizard.
 type Theme struct {
-	// Markers & connectors
-	MarkerColor lipgloss.Color
-	PipeColor   lipgloss.Color
-
-	// Completed step
-	StepLabelColor  lipgloss.Color
-	StepAnswerColor lipgloss.Color
-
-	// Active question
-	ActiveQuestionColor lipgloss.Color
-
-	// Section dividers
-	SectionLineColor  lipgloss.Color
-	SectionLabelColor lipgloss.Color
-	AlwaysNoteColor   lipgloss.Color
-
-	// List items
-	SelectedDotColor   lipgloss.Color
-	UnselectedDotColor lipgloss.Color
-	FocusBarColor      lipgloss.Color
-	FocusLabelColor    lipgloss.Color
-	ItemPathColor      lipgloss.Color
-
-	// Search bar
-	SearchSlashColor lipgloss.Color
-	SearchTextColor  lipgloss.Color
-	SearchCursorFg   lipgloss.Color
-	SearchCursorBg   lipgloss.Color
-
-	// Scroll counter
-	ScrollPosColor   lipgloss.Color
-	ScrollTotalColor lipgloss.Color
-
-	// Selected pill
-	PillBracketColor lipgloss.Color
-	PillItemColor    lipgloss.Color
-	PillDotColor     lipgloss.Color
-	PillMoreColor    lipgloss.Color
-	PillNoneColor    lipgloss.Color
-
-	// Misc
-	HelperTextColor lipgloss.Color
-	DoneColor       lipgloss.Color
-	ErrorColor      lipgloss.Color
+	MarkerColor, PipeColor, StepLabelColor, StepAnswerColor                             lipgloss.Color
+	ActiveQuestionColor, SectionLineColor, SectionLabelColor, AlwaysNoteColor           lipgloss.Color
+	SelectedDotColor, UnselectedDotColor, FocusBarColor, FocusLabelColor, ItemPathColor lipgloss.Color
+	SearchSlashColor, SearchTextColor, SearchCursorFg, SearchCursorBg                   lipgloss.Color
+	ScrollPosColor, ScrollTotalColor, PillBracketColor, PillItemColor                   lipgloss.Color
+	PillDotColor, PillMoreColor, PillNoneColor, HelperTextColor, DoneColor, ErrorColor  lipgloss.Color
 }
 
-// DefaultTheme returns a green-only palette (no gray/red/blue accents).
 func DefaultTheme() Theme {
 	return Theme{
-		MarkerColor:         lipgloss.Color("#4ade80"),
-		PipeColor:           lipgloss.Color("#15803d"),
-		StepLabelColor:      lipgloss.Color("#22c55e"),
-		StepAnswerColor:     lipgloss.Color("#bbf7d0"),
-		ActiveQuestionColor: lipgloss.Color("#ecfdf5"),
-		SectionLineColor:    lipgloss.Color("#14532d"),
-		SectionLabelColor:   lipgloss.Color("#166534"),
-		AlwaysNoteColor:     lipgloss.Color("#4ade80"),
-		SelectedDotColor:    lipgloss.Color("#4ade80"),
-		UnselectedDotColor:  lipgloss.Color("#14532d"),
-		FocusBarColor:       lipgloss.Color("#4ade80"),
-		FocusLabelColor:     lipgloss.Color("#4ade80"),
-		ItemPathColor:       lipgloss.Color("#15803d"),
-		SearchSlashColor:    lipgloss.Color("#4ade80"),
-		SearchTextColor:     lipgloss.Color("#ecfdf5"),
-		SearchCursorFg:      lipgloss.Color("#052e16"),
-		SearchCursorBg:      lipgloss.Color("#4ade80"),
-		ScrollPosColor:      lipgloss.Color("#22c55e"),
-		ScrollTotalColor:    lipgloss.Color("#166534"),
-		PillBracketColor:    lipgloss.Color("#15803d"),
-		PillItemColor:       lipgloss.Color("#4ade80"),
-		PillDotColor:        lipgloss.Color("#22c55e"),
-		PillMoreColor:       lipgloss.Color("#86efac"),
-		PillNoneColor:       lipgloss.Color("#14532d"),
-		HelperTextColor:     lipgloss.Color("#22c55e"),
-		DoneColor:           lipgloss.Color("#4ade80"),
-		ErrorColor:          lipgloss.Color("#ef4444"),
+		MarkerColor: "#4ade80", PipeColor: "#15803d", StepLabelColor: "#22c55e", StepAnswerColor: "#bbf7d0", ActiveQuestionColor: "#ecfdf5",
+		SectionLineColor: "#14532d", SectionLabelColor: "#166534", AlwaysNoteColor: "#4ade80", SelectedDotColor: "#4ade80", UnselectedDotColor: "#14532d",
+		FocusBarColor: "#4ade80", FocusLabelColor: "#4ade80", ItemPathColor: "#15803d", SearchSlashColor: "#4ade80", SearchTextColor: "#ecfdf5",
+		SearchCursorFg: "#052e16", SearchCursorBg: "#4ade80", ScrollPosColor: "#22c55e", ScrollTotalColor: "#166534", PillBracketColor: "#15803d",
+		PillItemColor: "#4ade80", PillDotColor: "#22c55e", PillMoreColor: "#86efac", PillNoneColor: "#14532d", HelperTextColor: "#22c55e", DoneColor: "#4ade80", ErrorColor: "#ef4444",
 	}
 }

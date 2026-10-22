@@ -1,77 +1,38 @@
 package stepflow
 
 import (
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 )
 
-// InfoStep renders read-only details and continues on Enter.
 type InfoStep struct {
-	key      string
-	question string
-	body     string
-	next     func(Result) []Step
+	key, question, body string
+	next                func(Result) []Step
 }
 
-// Info creates a non-interactive details step.
-func Info(key, question string) *InfoStep {
-	return &InfoStep{key: key, question: question}
-}
-
-// Body sets the details text shown in the step.
-func (s *InfoStep) Body(text string) *InfoStep {
-	s.body = text
-	return s
-}
-
-// WithNext attaches a dynamic step planner.
-func (s *InfoStep) WithNext(fn func(Result) []Step) *InfoStep {
-	s.next = fn
-	return s
-}
-
-func (s *InfoStep) Key() string           { return s.key }
-func (s *InfoStep) Question() string      { return s.question }
-func (s *InfoStep) Init(_ styles) tea.Cmd { return nil }
-
-// NextSteps satisfies the DynamicStep interface.
-func (s *InfoStep) NextSteps(completed Result) []Step {
+func Info(key, question string) *InfoStep                    { return &InfoStep{key: key, question: question} }
+func (s *InfoStep) Body(v string) *InfoStep                  { s.body = v; return s }
+func (s *InfoStep) WithNext(f func(Result) []Step) *InfoStep { s.next = f; return s }
+func (s *InfoStep) Key() string                              { return s.key }
+func (s *InfoStep) Question() string                         { return s.question }
+func (s *InfoStep) Init(styles) tea.Cmd                      { return nil }
+func (s *InfoStep) NextSteps(r Result) []Step {
 	if s.next != nil {
-		return s.next(completed)
+		return s.next(r)
 	}
 	return nil
 }
-
-func (s *InfoStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
-	if msg.String() == "enter" {
-		return true, nil
-	}
-
-	return false, nil
-}
-
+func (s *InfoStep) Update(k tea.KeyMsg) (bool, tea.Cmd) { return k.String() == "enter", nil }
 func (s *InfoStep) View(st styles) string {
 	body := strings.TrimSpace(s.body)
 	if body == "" {
 		body = "No details."
 	}
-
-	lines := strings.Split(body, "\n")
-	var b strings.Builder
-	for _, line := range lines {
-		b.WriteString("   " + st.stepAnswer.Render(line) + "\n")
+	v := ""
+	for _, line := range strings.Split(body, "\n") {
+		v += "   " + st.stepAnswer.Render(line) + "\n"
 	}
-
-	b.WriteString("\n" + st.helper.Render("enter to continue") + "\n")
-
-	return b.String()
+	return v + st.helper.Render("enter to continue") + "\n"
 }
-
-func (s *InfoStep) ResultView(st styles) string {
-	return st.stepAnswer.Render(s.Answer())
-}
-
-func (s *InfoStep) Answer() string {
-	return "shown"
-}
+func (s *InfoStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
+func (s *InfoStep) Answer() string              { return "shown" }

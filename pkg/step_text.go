@@ -1,35 +1,19 @@
 package stepflow
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"strings"
 )
 
-// TextStep is a free-text input step.
 type TextStep struct {
-	key         string
-	question    string
-	placeholder string
-	defaultVal  string
-	input       textinput.Model
-	next        func(Result) []Step
+	key, question, placeholder, defaultVal string
+	input                                  textinput.Model
+	next                                   func(Result) []Step
 }
 
-// Text creates a new free-text step.
-func Text(key, question string) *TextStep {
-	return &TextStep{key: key, question: question}
-}
-
-// Placeholder sets the input placeholder text.
-func (s *TextStep) Placeholder(p string) *TextStep {
-	s.placeholder = p
-	return s
-}
-
-// Default sets the value used when the user submits an empty input.
+func Text(key, question string) *TextStep          { return &TextStep{key: key, question: question} }
+func (s *TextStep) Placeholder(p string) *TextStep { s.placeholder = p; return s }
 func (s *TextStep) Default(d string) *TextStep {
 	s.defaultVal = d
 	if s.placeholder == "" {
@@ -37,62 +21,47 @@ func (s *TextStep) Default(d string) *TextStep {
 	}
 	return s
 }
-
-// WithNext attaches a dynamic step planner.
-func (s *TextStep) WithNext(fn func(Result) []Step) *TextStep {
-	s.next = fn
-	return s
-}
-
-func (s *TextStep) Key() string      { return s.key }
-func (s *TextStep) Question() string { return s.question }
-
-// NextSteps satisfies the DynamicStep interface.
-func (s *TextStep) NextSteps(completed Result) []Step {
+func (s *TextStep) WithNext(f func(Result) []Step) *TextStep { s.next = f; return s }
+func (s *TextStep) Key() string                              { return s.key }
+func (s *TextStep) Question() string                         { return s.question }
+func (s *TextStep) NextSteps(r Result) []Step {
 	if s.next != nil {
-		return s.next(completed)
+		return s.next(r)
 	}
 	return nil
 }
-
 func (s *TextStep) Init(st styles) tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = s.placeholder
 	ti.CharLimit = 2048
 	ti.Width = 72
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(st.marker.GetForeground())
-	ti.TextStyle = lipgloss.NewStyle().Foreground(st.stepAnswer.GetForeground())
+	ti.PromptStyle = ti.PromptStyle.Foreground(st.marker.GetForeground())
+	ti.TextStyle = ti.TextStyle.Foreground(st.stepAnswer.GetForeground())
 	ti.SetValue(s.defaultVal)
 	s.input = ti
-
 	return tea.Batch(textinput.Blink, s.input.Focus())
 }
-
 func (s *TextStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	if msg.String() == "enter" {
 		return true, nil
 	}
-
 	var cmd tea.Cmd
 	s.input, cmd = s.input.Update(msg)
-
 	return false, cmd
 }
-
+func (s *TextStep) UpdateOther(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	s.input, cmd = s.input.Update(msg)
+	return cmd
+}
 func (s *TextStep) View(st styles) string {
-	return s.input.View() + "\n" +
-		"\n" + st.helper.Render("enter to confirm") + "\n"
+	return s.input.View() + "\n" + st.helper.Render("enter to confirm") + "\n"
 }
-
-func (s *TextStep) ResultView(st styles) string {
-	return st.stepAnswer.Render(s.Answer())
-}
-
+func (s *TextStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
 func (s *TextStep) Answer() string {
-	val := strings.TrimSpace(s.input.Value())
-	if val == "" {
+	v := strings.TrimSpace(s.input.Value())
+	if v == "" {
 		return s.defaultVal
 	}
-
-	return val
+	return v
 }
