@@ -25,6 +25,10 @@ jobs:
       - run: go vet ./...
       - run: go build ./...
       - name: Build examples
-        run: |
-          go build ./example/...
-          go build -o /dev/null ./example/usage.go
+        run: go build ./example/...
+      - name: Build root example (Unix)
+        if: runner.os != 'Windows'
+        run: go build -o /dev/null ./example/usage.go
+      - name: Build root example (Windows)
+        if: runner.os == 'Windows'
+        run: go build -o nul ./example/usage.go

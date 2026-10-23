@@ -12,7 +12,11 @@ func (r Result) Get(key string) string { return r[key] }
 func (r Result) Bool(key string) bool  { return strings.EqualFold(r[key], "yes") }
 
 // Strings returns multi-select choices. Accurate structured parsing is supported
-// even when selected labels contain commas or quotes.
+// using CSV decoding for labels containing commas, quotes, whitespace, or newlines.
+// Note: unquoted legacy comma-separated values (e.g. "a, b") are split by comma with
+// leading whitespace trimmed for backward compatibility. Because unquoted values in
+// map[string]string are inherently ambiguous, selections requiring preserved leading
+// whitespace or commas should use CSV quoting.
 func (r Result) Strings(key string) []string {
 	v := strings.TrimSpace(r[key])
 	if v == "" {
@@ -25,18 +29,9 @@ func (r Result) Strings(key string) []string {
 		bits := strings.Split(v, ",")
 		var out []string
 		for _, b := range bits {
-			if s := strings.TrimSpace(b); s != "" {
-				out = append(out, s)
-			}
+			out = append(out, strings.TrimSpace(b))
 		}
 		return out
 	}
-	var out []string
-	for _, s := range record {
-		s = strings.TrimSpace(s)
-		if s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+	return record
 }

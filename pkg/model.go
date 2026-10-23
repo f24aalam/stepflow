@@ -154,7 +154,7 @@ func (m wizardModel) View() string {
 	if m.failed {
 		errText := fmt.Sprintf("✗ %v", m.failure)
 		if m.width > 6 {
-			errText = lipgloss.NewStyle().MaxWidth(m.width - 2).Render(errText)
+			errText = lipgloss.NewStyle().Width(m.width - 2).Render(errText)
 		}
 		return b.String() + "\n" + m.st.error.Render(errText) + "\n"
 	}
@@ -168,7 +168,7 @@ func (m wizardModel) View() string {
 		s := m.steps[m.current]
 		q := s.Question()
 		if m.width > 6 {
-			q = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(q)
+			q = lipgloss.NewStyle().Width(m.width - 4).Render(q)
 		}
 		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.activeQ.Render(q) + "\n" + s.View(m.st))
 	}

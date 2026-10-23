@@ -1,6 +1,7 @@
 package stepflow
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -373,24 +374,41 @@ func TestResultHelpers(t *testing.T) {
 func TestMultiSelectWithCommasAndQuotes(t *testing.T) {
 	st := newStyles(DefaultTheme())
 
-	// Test 1: Labels with commas and quotes in multi-select
-	list := List("authors", "Select authors").
+	// Test 1: Labels with commas, quotes, leading/trailing spaces, newlines, and empty labels
+	list := List("items", "Select items").
 		MultiSelect(true).
 		Items(
 			Item("Smith, John"),
 			Item("Doe, Jane"),
 			Item("Plain"),
 			Item(`O'Connor, "Bob"`),
+			Item("  leading and trailing  "),
+			Item("line1\nline2"),
+			Item(""),
 		).
-		PreSelect("Smith, John", "Doe, Jane", `O'Connor, "Bob"`)
+		PreSelect(
+			"Smith, John",
+			"Doe, Jane",
+			`O'Connor, "Bob"`,
+			"  leading and trailing  ",
+			"line1\nline2",
+			"",
+		)
 
 	list.Init(st)
 
 	ans := list.Answer()
-	r := Result{"authors": ans}
+	r := Result{"items": ans}
 
-	got := r.Strings("authors")
-	expected := []string{"Smith, John", "Doe, Jane", `O'Connor, "Bob"`}
+	got := r.Strings("items")
+	expected := []string{
+		"Smith, John",
+		"Doe, Jane",
+		`O'Connor, "Bob"`,
+		"  leading and trailing  ",
+		"line1\nline2",
+		"",
+	}
 
 	if len(got) != len(expected) {
 		t.Fatalf("expected %d items, got %d: %#v", len(expected), len(got), got)
@@ -402,7 +420,7 @@ func TestMultiSelectWithCommasAndQuotes(t *testing.T) {
 	}
 
 	// Verify Result.Get returns non-empty representation
-	if r.Get("authors") == "" {
+	if r.Get("items") == "" {
 		t.Fatal("expected non-empty Get value")
 	}
 
@@ -425,6 +443,18 @@ func TestMultiSelectWithCommasAndQuotes(t *testing.T) {
 	if len(tags) != 3 || tags[0] != "go" || tags[1] != "cli" || tags[2] != "tui" {
 		t.Fatalf("unexpected legacy tags split: %#v", tags)
 	}
+
+	// Test 4: Single empty label selected in multi-select
+	emptyList := List("empty", "Pick empty").
+		MultiSelect(true).
+		Items(Item("")).
+		PreSelect("")
+	emptyList.Init(st)
+	rEmpty := Result{"empty": emptyList.Answer()}
+	emptyGot := rEmpty.Strings("empty")
+	if len(emptyGot) != 1 || emptyGot[0] != "" {
+		t.Fatalf("expected slice with one empty string, got %#v", emptyGot)
+	}
 }
 
 func TestTerminalResizing(t *testing.T) {
@@ -441,14 +471,25 @@ func TestTerminalResizing(t *testing.T) {
 
 	// Narrow terminal (width 36)
 	text.UpdateMsg(tea.WindowSizeMsg{Width: 36, Height: 20})
-	if text.input.Width != 32 {
-		t.Fatalf("expected width to resize to 32 (36-4), got %d", text.input.Width)
+	if text.input.Width != 34 {
+		t.Fatalf("expected width to resize to 34 (36-2), got %d", text.input.Width)
 	}
 
 	// Wide terminal (width 120) caps at 72
 	text.UpdateMsg(tea.WindowSizeMsg{Width: 120, Height: 20})
 	if text.input.Width != 72 {
 		t.Fatalf("expected width capped at 72, got %d", text.input.Width)
+	}
+
+	// Extremely narrow dimensions
+	for _, w := range []int{10, 5, 2, 1, 0, -5} {
+		text.UpdateMsg(tea.WindowSizeMsg{Width: w, Height: 20})
+		if w > 0 && text.input.Width < 1 {
+			t.Fatalf("width %d resulted in invalid text input width: %d", w, text.input.Width)
+		}
+		if w >= 2 && text.input.Width > w {
+			t.Fatalf("terminal width %d exceeded by input width %d", w, text.input.Width)
+		}
 	}
 
 	// 2. ListStep reacts to terminal width and avoids overflow
@@ -463,22 +504,55 @@ func TestTerminalResizing(t *testing.T) {
 
 	// Verify lines do not exceed terminal width (excluding ANSI escape codes)
 	for _, line := range strings.Split(view, "\n") {
-		// When strip or lipgloss width is checked:
 		lineWidth := lipgloss.Width(line)
 		if lineWidth > 40 {
 			t.Errorf("list view line exceeded terminal width 40: width was %d for line %q", lineWidth, line)
 		}
 	}
 
-	// 3. InfoStep with narrow terminal
-	longBody := strings.Repeat("Long informational text paragraph. ", 5)
+	// 3. InfoStep with narrow terminal wraps rather than truncates
+	longBody := "First line with important end token XYZ.\nSecond line with tail token ABC."
 	info := Info("info", "Information").Body(longBody)
-	info.UpdateMsg(tea.WindowSizeMsg{Width: 50, Height: 20})
+	info.UpdateMsg(tea.WindowSizeMsg{Width: 25, Height: 20})
 	infoView := info.View(st)
-	for _, line := range strings.Split(infoView, "\n") {
-		if lipgloss.Width(line) > 50 {
-			t.Errorf("info view line exceeded terminal width 50: width was %d", lipgloss.Width(line))
-		}
+	if !strings.Contains(infoView, "XYZ") || !strings.Contains(infoView, "ABC") {
+		t.Fatalf("expected info view to wrap and preserve tokens XYZ and ABC, got: %q", infoView)
+	}
+}
+
+func TestLongMessagesWrappedNotTruncated(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	// 1. Long error message in LoadStep
+	longErr := errors.New("database connection refused: dial tcp 192.168.1.50:5432: connection timeout after 30 seconds")
+	load := Load("fetch", "Fetch data")
+	load.UpdateMsg(tea.WindowSizeMsg{Width: 35, Height: 20})
+	load.UpdateMsg(loadErrMsg{err: longErr})
+	loadView := load.View(st)
+	if !strings.Contains(loadView, "timeout after") || !strings.Contains(loadView, "seconds") {
+		t.Fatalf("expected long error message to be preserved through wrapping, got: %q", loadView)
+	}
+
+	// 2. Long loading status in LoadStep
+	longStatus := "Downloading massive dependency archive from remote registry (95% completed)"
+	loadActive := Load("active", "Working")
+	loadActive.Init(st)
+	loadActive.UpdateMsg(tea.WindowSizeMsg{Width: 35, Height: 20})
+	loadActive.status = longStatus
+	activeView := loadActive.View(st)
+	if !strings.Contains(activeView, "95%") || !strings.Contains(activeView, "completed") {
+		t.Fatalf("expected long status message to be preserved through wrapping, got: %q", activeView)
+	}
+
+	// 3. Long message in TerminalStep
+	longTermMsg := "Scaffolding finished completely: inspect ./my-app and execute 'npm run dev' to launch"
+	term := Success("done", "Finished").
+		Body(longTermMsg).
+		WithNext(func(Result) []Step { return nil })
+	term.UpdateMsg(tea.WindowSizeMsg{Width: 30, Height: 20})
+	termView := term.View(st)
+	if !strings.Contains(termView, "npm run") || !strings.Contains(termView, "dev") {
+		t.Fatalf("expected terminal step message to be wrapped without truncation, got: %q", termView)
 	}
 }
 

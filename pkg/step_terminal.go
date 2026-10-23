@@ -70,16 +70,16 @@ func (s *TerminalStep) View(st styles) string {
 		body = "Done."
 	}
 	for _, line := range strings.Split(body, "\n") {
-		var rendered string
-		if s.kind == terminalKindError {
-			rendered = st.error.Render(line)
-		} else {
-			rendered = st.done.Render(line)
-		}
 		if s.width > 6 {
-			rendered = lipgloss.NewStyle().MaxWidth(s.width - 4).Render(rendered)
+			line = lipgloss.NewStyle().Width(s.width - 4).Render(line)
 		}
-		v += "  " + rendered + "\n"
+		for _, sub := range strings.Split(line, "\n") {
+			if s.kind == terminalKindError {
+				v += "  " + st.error.Render(sub) + "\n"
+			} else {
+				v += "  " + st.done.Render(sub) + "\n"
+			}
+		}
 	}
 	return v + "  " + st.helper.Render("enter to continue") + "\n"
 }

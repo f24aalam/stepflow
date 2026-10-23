@@ -1,8 +1,6 @@
 package stepflow
 
 import (
-	"bytes"
-	"encoding/csv"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -220,21 +218,30 @@ func (s *ListStep) Answer() string {
 	if !s.multi {
 		return labels[0]
 	}
-	needsQuote := false
+	needsCSV := false
 	for _, l := range labels {
-		if strings.ContainsAny(l, ",\"\n\r") {
-			needsQuote = true
+		if l == "" || strings.TrimSpace(l) != l || strings.ContainsAny(l, ",\"\r\n") {
+			needsCSV = true
 			break
 		}
 	}
-	if !needsQuote {
+	if !needsCSV {
 		return strings.Join(labels, ", ")
 	}
-	var buf bytes.Buffer
-	w := csv.NewWriter(&buf)
-	_ = w.Write(labels)
-	w.Flush()
-	return strings.TrimSuffix(buf.String(), "\n")
+	var b strings.Builder
+	for i, l := range labels {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		if l == "" || strings.TrimSpace(l) != l || strings.ContainsAny(l, ",\"\r\n") {
+			b.WriteByte('"')
+			b.WriteString(strings.ReplaceAll(l, `"`, `""`))
+			b.WriteByte('"')
+		} else {
+			b.WriteString(l)
+		}
+	}
+	return b.String()
 }
 func (s *ListStep) View(st styles) string {
 	var b strings.Builder

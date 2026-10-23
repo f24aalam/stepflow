@@ -34,21 +34,24 @@ func (s *TextStep) NextSteps(r Result) []Step {
 func (s *TextStep) reset() {
 	s.input.SetValue(s.defaultVal)
 }
+func (s *TextStep) inputWidth() int {
+	if s.width <= 0 {
+		return 72
+	}
+	avail := s.width - 2
+	if avail < 1 {
+		avail = 1
+	}
+	if avail > 72 {
+		avail = 72
+	}
+	return avail
+}
 func (s *TextStep) Init(st styles) tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = s.placeholder
 	ti.CharLimit = 2048
-	ti.Width = 72
-	if s.width > 6 {
-		w := s.width - 4
-		if w > 72 {
-			w = 72
-		}
-		if w < 10 {
-			w = 10
-		}
-		ti.Width = w
-	}
+	ti.Width = s.inputWidth()
 	ti.PromptStyle = ti.PromptStyle.Foreground(st.marker.GetForeground())
 	ti.TextStyle = ti.TextStyle.Foreground(st.stepAnswer.GetForeground())
 	ti.SetValue(s.defaultVal)
@@ -69,16 +72,7 @@ func (s *TextStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
 		return s.Update(m)
 	case tea.WindowSizeMsg:
 		s.width = m.Width
-		if m.Width > 6 {
-			w := m.Width - 4
-			if w > 72 {
-				w = 72
-			}
-			if w < 10 {
-				w = 10
-			}
-			s.input.Width = w
-		}
+		s.input.Width = s.inputWidth()
 	}
 	var cmd tea.Cmd
 	s.input, cmd = s.input.Update(msg)

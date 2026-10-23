@@ -44,11 +44,12 @@ func (s *InfoStep) View(st styles) string {
 	}
 	v := ""
 	for _, line := range strings.Split(body, "\n") {
-		rendered := st.stepAnswer.Render(line)
 		if s.width > 6 {
-			rendered = lipgloss.NewStyle().MaxWidth(s.width - 4).Render(rendered)
+			line = lipgloss.NewStyle().Width(s.width - 4).Render(line)
 		}
-		v += "  " + rendered + "\n"
+		for _, sub := range strings.Split(line, "\n") {
+			v += "  " + st.stepAnswer.Render(sub) + "\n"
+		}
 	}
 	return v + "  " + st.helper.Render("enter to continue") + "\n"
 }

@@ -346,3 +346,47 @@ func TestLoadStepPreCanceledContext(t *testing.T) {
 		t.Fatal("worker should not have been called when context was pre-canceled")
 	}
 }
+
+func TestLoadStepRapidStatusNormalCompletion(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	sentCount := 0
+
+	load := Load("rapid_ok", "Rapid Normal").
+		Run(func(status chan<- string) (string, error) {
+			for i := 0; i < 200; i++ {
+				status <- "progress"
+				sentCount++
+			}
+			return "completed_ok", nil
+		})
+
+	cmd := load.Init(st)
+	if cmd == nil {
+		t.Fatal("expected Init command")
+	}
+
+	// Execute batch command
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c != nil {
+				res := c()
+				if doneMsg, ok := res.(loadDoneMsg); ok {
+					if doneMsg.value != "completed_ok" {
+						t.Fatalf("expected 'completed_ok', got %q", doneMsg.value)
+					}
+				}
+			}
+		}
+	}
+
+	if sentCount != 200 {
+		t.Fatalf("expected 200 sends, got %d", sentCount)
+	}
+
+	// Drain status channel via tick
+	load.UpdateMsg(loadTickMsg{})
+	if load.status != "progress" {
+		t.Fatalf("expected status 'progress', got %q", load.status)
+	}
+}

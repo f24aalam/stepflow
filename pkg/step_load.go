@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type loadTickMsg struct{}
@@ -31,19 +34,20 @@ type LoadStep struct {
 	finished       bool
 	failure        error
 	next           func(Result) []Step
+	width          int
 }
 
 func Load(key, question string) *LoadStep { return &LoadStep{key: key, question: question} }
 
 // Run attaches a legacy work function. Legacy workers lack context cancellation support
 // and cannot be forcibly terminated if the work function does not exit on its own.
-// Status updates are handled asynchronously so workers will not stall on full buffers,
-// but RunContext is strongly recommended for cancellation-aware background operations.
+// Status channel sends are forwarded asynchronously to prevent stalling on full UI buffers.
+// RunContext is strongly recommended for cancellation-aware background operations.
 func (s *LoadStep) Run(fn WorkFunc) *LoadStep { s.work = fn; s.contextWork = nil; return s }
 
 // RunContext attaches a context-aware work function. The worker receives the wizard's context.Context
 // and should monitor ctx.Done() for cooperative cancellation. Status updates sent to the channel
-// will not block even if sends occur rapidly.
+// are forwarded to the UI without accumulating unbounded buffers.
 func (s *LoadStep) RunContext(fn ContextWorkFunc) *LoadStep {
 	s.contextWork = fn
 	s.work = nil
@@ -145,6 +149,9 @@ func (s *LoadStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
 		return true, nil
 	case loadErrMsg:
 		s.failure = m.err
+	case tea.WindowSizeMsg:
+		s.width = m.Width
+		return false, nil
 	}
 	return false, nil
 }
@@ -153,11 +160,30 @@ func (s *LoadStep) HasError() bool                    { return s.failure != nil 
 func (s *LoadStep) StepError() error                  { return s.failure }
 func (s *LoadStep) View(st styles) string {
 	if s.failure != nil {
-		return "  " + st.error.Render("✗ "+s.failure.Error()) + "\n"
+		errText := "✗ " + s.failure.Error()
+		if s.width > 6 {
+			errText = lipgloss.NewStyle().Width(s.width - 4).Render(errText)
+		}
+		var b strings.Builder
+		for _, line := range strings.Split(errText, "\n") {
+			b.WriteString("  " + st.error.Render(line) + "\n")
+		}
+		return b.String()
 	}
 	if s.finished {
 		return ""
 	}
-	return fmt.Sprintf("  %s  %s\n", st.marker.Render(spinnerFrames[s.frame]), st.helper.Render(s.status))
+	spinner := st.marker.Render(spinnerFrames[s.frame])
+	statusText := s.status
+	if s.width > 10 {
+		statusText = lipgloss.NewStyle().Width(s.width - 7).Render(statusText)
+	}
+	lines := strings.Split(statusText, "\n")
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("  %s  %s\n", spinner, st.helper.Render(lines[0])))
+	for _, line := range lines[1:] {
+		b.WriteString(fmt.Sprintf("     %s\n", st.helper.Render(line)))
+	}
+	return b.String()
 }
 func (s *LoadStep) ResultView(st styles) string { return st.stepAnswer.Render(s.answer) }
