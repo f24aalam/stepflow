@@ -143,13 +143,27 @@ func (m wizardModel) View() string {
 			continue
 		}
 		q := step.Question()
-		ans := step.ResultView(m.st)
+		rst := m.st
 		if m.width > 6 {
-			q = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(q)
-			ans = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(ans)
+			w := m.width - 4
+			q = lipgloss.NewStyle().Width(w).Render(q)
+			// Wrap with the answer styles themselves so color is reapplied on every line.
+			// Copy() is required: lipgloss v0.10 styles share their rules map.
+			rst.stepAnswer = rst.stepAnswer.Copy().Width(w)
+			rst.done = rst.done.Copy().Width(w)
+			rst.error = rst.error.Copy().Width(w)
 		}
-		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.stepLabel.Render(q) + "\n")
-		b.WriteString(m.st.pipe.Render("│") + "  " + ans + "\n" + m.st.pipe.Render("│") + "\n")
+		ans := step.ResultView(rst)
+		// Wrapped lines are padded by Width(); trim the padding to keep history compact.
+		prefix := m.st.marker.Render("◆") + "  "
+		for _, line := range strings.Split(q, "\n") {
+			b.WriteString(prefix + m.st.stepLabel.Render(strings.TrimRight(line, " ")) + "\n")
+			prefix = "   "
+		}
+		for _, line := range strings.Split(ans, "\n") {
+			b.WriteString(m.st.pipe.Render("│") + "  " + strings.TrimRight(line, " ") + "\n")
+		}
+		b.WriteString(m.st.pipe.Render("│") + "\n")
 	}
 	if m.failed {
 		errText := fmt.Sprintf("✗ %v", m.failure)

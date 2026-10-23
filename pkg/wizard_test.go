@@ -3,11 +3,13 @@ package stepflow
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestWizardValidationErrors(t *testing.T) {
@@ -388,5 +390,196 @@ func TestLoadStepRapidStatusNormalCompletion(t *testing.T) {
 	load.UpdateMsg(loadTickMsg{})
 	if load.status != "progress" {
 		t.Fatalf("expected status 'progress', got %q", load.status)
+	}
+}
+
+var ansiSeq = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// completedView answers every step with Enter at the given terminal width and
+// returns the final rendered history.
+func completedView(t *testing.T, width int, steps ...Step) string {
+	t.Helper()
+	m := newWizardModel(steps, newStyles(DefaultTheme()), true)
+	m.Init()
+	var tm tea.Model = m
+	tm, _ = tm.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+	for i := 0; i < len(steps); i++ {
+		tm, _ = tm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	wm := tm.(wizardModel)
+	if !wm.done {
+		t.Fatalf("wizard did not complete")
+	}
+	return wm.View()
+}
+
+// historyStep holds the wrapped lines of one completed step, prefixes removed.
+type historyStep struct{ question, answer []string }
+
+// parseHistory checks the compact history layout line by line and returns the
+// completed steps. Every line must fit the width, question continuation lines
+// must be indented under the question, answer lines must carry the "│  "
+// connector, and no blank lines may appear.
+func parseHistory(t *testing.T, view string, width int) []historyStep {
+	t.Helper()
+	var out []historyStep
+	lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
+	prev := "" // "q", "a", "sep"
+	for i, raw := range lines {
+		if w := lipgloss.Width(raw); w > width {
+			t.Errorf("line %d width %d exceeds terminal width %d: %q", i, w, width, raw)
+		}
+		line := ansiSeq.ReplaceAllString(raw, "")
+		switch {
+		case strings.HasPrefix(line, "◆  "):
+			if prev != "" && prev != "sep" {
+				t.Errorf("line %d: question must follow a separator: %q", i, line)
+			}
+			out = append(out, historyStep{question: []string{line[len("◆  "):]}})
+			prev = "q"
+		case strings.HasPrefix(line, "   ") && prev == "q":
+			s := &out[len(out)-1]
+			s.question = append(s.question, line[3:])
+		case strings.HasPrefix(line, "│  "):
+			if prev != "q" && prev != "a" {
+				t.Errorf("line %d: answer line must follow its question: %q", i, line)
+			}
+			s := &out[len(out)-1]
+			s.answer = append(s.answer, line[len("│  "):])
+			prev = "a"
+		case line == "│":
+			if prev != "a" {
+				t.Errorf("line %d: separator must follow an answer: %q", i, line)
+			}
+			prev = "sep"
+		case line == "✓  All done!" && i == len(lines)-1:
+		default:
+			t.Errorf("line %d: unexpected line %q", i, line)
+		}
+	}
+	return out
+}
+
+func squash(s string) string { return strings.Join(strings.Fields(s), "") }
+
+func TestCompletedLongAnswerWraps(t *testing.T) {
+	path := "/home/user/projects/a-very-long-project-directory/example/with/many/nested/segments"
+	view := completedView(t, 40, Text("dir", "Project directory").Default(path))
+	steps := parseHistory(t, view, 40)
+	if len(steps) != 1 {
+		t.Fatalf("expected 1 completed step, got %d: %q", len(steps), view)
+	}
+	if len(steps[0].answer) < 2 {
+		t.Fatalf("expected long answer to wrap onto continuation lines, got %q", steps[0].answer)
+	}
+	if got := strings.Join(steps[0].answer, ""); got != path {
+		t.Fatalf("answer clipped or altered:\nwant %q\ngot  %q", path, got)
+	}
+}
+
+func TestCompletedLongQuestionWraps(t *testing.T) {
+	q := "Which deployment environment should receive the generated configuration files today?"
+	view := completedView(t, 40, Confirm("deploy", q))
+	steps := parseHistory(t, view, 40)
+	if len(steps) != 1 {
+		t.Fatalf("expected 1 completed step, got %d: %q", len(steps), view)
+	}
+	if len(steps[0].question) < 2 {
+		t.Fatalf("expected long question to wrap, got %q", steps[0].question)
+	}
+	if squash(strings.Join(steps[0].question, " ")) != squash(q) {
+		t.Fatalf("question content altered: %q", steps[0].question)
+	}
+	if len(steps[0].answer) != 1 || steps[0].answer[0] != "Yes" {
+		t.Fatalf("answer should stay on its own line below the question, got %q", steps[0].answer)
+	}
+}
+
+func TestCompletedShortAnswerUnchanged(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	want := st.marker.Render("◆") + "  " + st.stepLabel.Render("Name") + "\n" +
+		st.pipe.Render("│") + "  " + st.stepAnswer.Render("Bob") + "\n" +
+		st.pipe.Render("│") + "\n" +
+		st.done.Render("✓  All done!") + "\n"
+	for _, w := range []int{0, 20, 40, 80} {
+		if got := completedView(t, w, Text("name", "Name").Default("Bob")); got != want {
+			t.Errorf("width %d: short history changed:\nwant %q\ngot  %q", w, want, got)
+		}
+	}
+}
+
+func TestCompletedMultipleSteps(t *testing.T) {
+	long := "a long answer that definitely needs more than one line at narrow widths"
+	for _, w := range []int{20, 40, 80} {
+		view := completedView(t, w,
+			Text("name", "Name").Default("Bob"),
+			Text("desc", "Description").Default(long),
+			Confirm("git", "Initialize Git?"),
+			Success("end", "Finished").Body("Run 'make install' in ./my-app to complete the setup"),
+		)
+		steps := parseHistory(t, view, w)
+		if len(steps) != 4 {
+			t.Fatalf("width %d: expected 4 completed steps, got %d: %q", w, len(steps), view)
+		}
+		want := []string{"Bob", long, "Yes", "Run 'make install' in ./my-app to complete the setup"}
+		for i, s := range steps {
+			if squash(strings.Join(s.answer, " ")) != squash(want[i]) {
+				t.Errorf("width %d step %d: answer altered: %q", w, i, s.answer)
+			}
+		}
+		if len(steps[0].answer) != 1 || len(steps[2].answer) != 1 {
+			t.Errorf("width %d: short answers should not wrap: %q / %q", w, steps[0].answer, steps[2].answer)
+		}
+	}
+}
+
+func TestRenderingAtNarrowWidths(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	for _, w := range []int{20, 40, 80} {
+		checkLines := func(name, view string) {
+			for _, line := range strings.Split(view, "\n") {
+				if lw := lipgloss.Width(line); lw > w {
+					t.Errorf("width %d %s: line width %d exceeds terminal: %q", w, name, lw, line)
+				}
+			}
+		}
+
+		text := Text("q", "Query")
+		text.Init(st)
+		text.UpdateMsg(tea.WindowSizeMsg{Width: w, Height: 24})
+		if text.input.Width < 1 || text.input.Width > w-2 {
+			t.Errorf("width %d: text input width %d outside available space", w, text.input.Width)
+		}
+
+		list := List("l", "Pick").Items(Item(strings.Repeat("LongOption", 10), "meta"), Item("A"))
+		list.Init(st)
+		list.UpdateMsg(tea.WindowSizeMsg{Width: w, Height: 24})
+		checkLines("list", list.View(st))
+
+		info := Info("i", "Info").Body("Configuration was written successfully to ./config/settings.yaml END")
+		info.UpdateMsg(tea.WindowSizeMsg{Width: w, Height: 24})
+		iv := info.View(st)
+		checkLines("info", iv)
+		if !strings.Contains(iv, "END") {
+			t.Errorf("width %d: info body truncated: %q", w, iv)
+		}
+
+		m := newWizardModel([]Step{Text("n", "Name")}, st, true)
+		m.width = w
+		m.failed = true
+		m.failure = errors.New("database connection refused: dial tcp 192.168.1.50:5432 timeout END")
+		fv := m.View()
+		checkLines("failure", fv)
+		if !strings.Contains(squash(ansiSeq.ReplaceAllString(fv, "")), squash(m.failure.Error())) {
+			t.Errorf("width %d: failure message truncated: %q", w, fv)
+		}
+
+		// Short content must not be padded out to the terminal width.
+		short := completedView(t, w, Confirm("ok", "OK?"))
+		for _, line := range strings.Split(strings.TrimSuffix(short, "\n"), "\n") {
+			if strings.HasSuffix(line, " ") {
+				t.Errorf("width %d: short history line padded: %q", w, line)
+			}
+		}
 	}
 }
