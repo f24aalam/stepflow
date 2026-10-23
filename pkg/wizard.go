@@ -20,8 +20,20 @@ func (w *Wizard) WithAltScreen(enabled bool) *Wizard  { w.useAltScreen = enabled
 func (w *Wizard) WithDoneScreen(enabled bool) *Wizard { w.showDone = enabled; return w }
 func (w *Wizard) WithSteps(steps ...Step) *Wizard     { w.steps = steps; return w }
 func (w *Wizard) WithTheme(t Theme) *Wizard           { w.theme = t; return w }
-func (w *Wizard) Run() (Result, error)                { return w.RunContext(context.Background()) }
+
+// Reset restores all configured steps to their initial default states.
+func (w *Wizard) Reset() *Wizard {
+	for _, s := range w.steps {
+		if r, ok := s.(resetter); ok {
+			r.reset()
+		}
+	}
+	return w
+}
+
+func (w *Wizard) Run() (Result, error) { return w.RunContext(context.Background()) }
 func (w *Wizard) RunContext(ctx context.Context) (Result, error) {
+	w.Reset()
 	if err := validateSteps(w.steps); err != nil {
 		return nil, err
 	}
@@ -33,7 +45,7 @@ func (w *Wizard) RunContext(ctx context.Context) (Result, error) {
 			l.ctx = ctx
 		}
 	}
-	m := newWizardModel(w.steps, newStyles(w.theme), w.showDone)
+	m := newWizardModel(w.steps, newStyles(w.theme), w.showDone, ctx)
 	opts := []tea.ProgramOption{tea.WithContext(ctx)}
 	if w.useAltScreen {
 		opts = append(opts, tea.WithAltScreen())
@@ -61,7 +73,13 @@ func validateSteps(steps []Step) error {
 	if len(steps) == 0 {
 		return errors.New("stepflow: no steps configured")
 	}
-	seen := map[string]bool{}
+	return validateStepList(steps, nil)
+}
+
+func validateStepList(steps []Step, seen map[string]bool) error {
+	if seen == nil {
+		seen = make(map[string]bool, len(steps))
+	}
 	for i, s := range steps {
 		if s == nil {
 			return fmt.Errorf("stepflow: step %d is nil", i)

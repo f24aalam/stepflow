@@ -22,3 +22,7 @@ type DynamicStep interface {
 	Step
 	NextSteps(Result) []Step
 }
+
+type resetter interface {
+	reset()
+}

@@ -31,9 +31,9 @@ fmt.Println(result.Get("name"), result.Bool("git"))
 - `Info(key, question).Body(text)`; `Success(key, question).Body(text)`; `Error(key, question).Body(text)`
 - `.WithNext(func(Result) []Step)` on each built-in step to choose the remainder dynamically
 
-Multi-select results are comma-separated strings for compatibility. For uncomplicated labels, `result.Strings(key)` splits this value. Labels containing commas are ambiguous; do not treat this method as a lossless serialization format.
+Multi-select results preserve string-based compatibility. `result.Strings(key)` accurately roundtrips selected items, even when labels contain commas or quotes.
 
-`Run()` returns `(Result,error)`. `RunContext(ctx)` additionally accepts cancellation. `errors.Is(err, stepflow.ErrCancelled)` identifies interactive cancellation. Loading failures propagate their original error. Legacy `.Run(fn)` workers have no cancellation mechanism; use `.RunContext(fn)` when cancellation matters, and send status messages with a `select` that includes `ctx.Done()`.
+`Run()` returns `(Result, error)`. `RunContext(ctx)` additionally accepts cancellation. Wizards can be executed multiple times safely; each run automatically resets steps to their configured defaults. `errors.Is(err, stepflow.ErrCancelled)` identifies interactive cancellation. Loading failures propagate their original error. Status channel sends are handled asynchronously so workers will not stall on full buffers. Legacy `.Run(fn)` workers lack context cancellation; use `.RunContext(fn)` for cooperative cancellation by checking `ctx.Done()`.
 
 Default terminal rendering uses the normal screen; opt in to the alternate screen with `.WithAltScreen(true)`. Colors are configured with `.WithTheme(stepflow.DefaultTheme())` or custom palettes via `.WithTheme(stepflow.NewTheme(primary, accent, muted))`. See [theme.go](pkg/theme.go).
 

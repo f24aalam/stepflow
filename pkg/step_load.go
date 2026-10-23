@@ -33,10 +33,17 @@ type LoadStep struct {
 	next           func(Result) []Step
 }
 
-func Load(key, question string) *LoadStep     { return &LoadStep{key: key, question: question} }
+func Load(key, question string) *LoadStep { return &LoadStep{key: key, question: question} }
+
+// Run attaches a legacy work function. Legacy workers lack context cancellation support
+// and cannot be forcibly terminated if the work function does not exit on its own.
+// Status updates are handled asynchronously so workers will not stall on full buffers,
+// but RunContext is strongly recommended for cancellation-aware background operations.
 func (s *LoadStep) Run(fn WorkFunc) *LoadStep { s.work = fn; s.contextWork = nil; return s }
 
-// RunContext gives the worker cancellation support. Status sends should use a select on ctx.Done().
+// RunContext attaches a context-aware work function. The worker receives the wizard's context.Context
+// and should monitor ctx.Done() for cooperative cancellation. Status updates sent to the channel
+// will not block even if sends occur rapidly.
 func (s *LoadStep) RunContext(fn ContextWorkFunc) *LoadStep {
 	s.contextWork = fn
 	s.work = nil
@@ -52,29 +59,57 @@ func (s *LoadStep) NextSteps(r Result) []Step {
 	}
 	return nil
 }
-func (s *LoadStep) Init(styles) tea.Cmd {
+func (s *LoadStep) reset() {
 	s.frame = 0
 	s.status = "working…"
 	s.answer = ""
 	s.finished = false
 	s.failure = nil
-	s.statusCh = make(chan string, 64)
-	ch := s.statusCh
+}
+func (s *LoadStep) Init(styles) tea.Cmd {
+	s.reset()
 	ctx := s.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := ctx.Err(); err != nil {
+		s.failure = err
+		return func() tea.Msg { return loadErrMsg{err} }
+	}
+
+	workerCh := make(chan string)
+	statusCh := make(chan string, 1)
+	s.statusCh = statusCh
+
+	go func() {
+		for msg := range workerCh {
+			select {
+			case statusCh <- msg:
+			default:
+				select {
+				case <-statusCh:
+				default:
+				}
+				select {
+				case statusCh <- msg:
+				default:
+				}
+			}
+		}
+		close(statusCh)
+	}()
+
 	return tea.Batch(spinnerTick(), func() tea.Msg {
 		var v string
 		var err error
 		if s.contextWork != nil {
-			v, err = s.contextWork(ctx, ch)
+			v, err = s.contextWork(ctx, workerCh)
 		} else if s.work != nil {
-			v, err = s.work(ch)
+			v, err = s.work(workerCh)
 		} else {
 			err = errors.New("stepflow: missing loading worker")
 		}
-		close(ch)
+		close(workerCh)
 		if err != nil {
 			return loadErrMsg{err}
 		}
@@ -96,6 +131,11 @@ func (s *LoadStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
 			}
 		}
 	drained:
+		s.frame = (s.frame + 1) % len(spinnerFrames)
+		if s.ctx != nil && s.ctx.Err() != nil && !s.finished && s.failure == nil {
+			s.failure = s.ctx.Err()
+			return false, nil
+		}
 		if !s.finished && s.failure == nil {
 			return false, spinnerTick()
 		}

@@ -1,10 +1,13 @@
 package stepflow
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	tea "github.com/charmbracelet/bubbletea"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type doneMsg struct{}
@@ -16,10 +19,18 @@ type wizardModel struct {
 	showDone, done, failed bool
 	failure                error
 	result                 Result
+	ctx                    context.Context
+	width, height          int
 }
 
-func newWizardModel(steps []Step, st styles, showDone bool) wizardModel {
-	return wizardModel{steps: steps, st: st, showDone: showDone}
+func newWizardModel(steps []Step, st styles, showDone bool, ctx ...context.Context) wizardModel {
+	var c context.Context
+	if len(ctx) > 0 && ctx[0] != nil {
+		c = ctx[0]
+	} else {
+		c = context.Background()
+	}
+	return wizardModel{steps: steps, st: st, showDone: showDone, ctx: c}
 }
 func (m wizardModel) Init() tea.Cmd {
 	if len(m.steps) == 0 {
@@ -30,6 +41,17 @@ func (m wizardModel) Init() tea.Cmd {
 func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "ctrl+c" {
 		return m, tea.Quit
+	}
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+		m.height = ws.Height
+		if m.current < len(m.steps) {
+			if ms, ok := m.steps[m.current].(MessageStep); ok {
+				_, cmd := ms.UpdateMsg(msg)
+				return m, cmd
+			}
+		}
+		return m, nil
 	}
 	if _, ok := msg.(doneMsg); ok {
 		m.done = true
@@ -52,14 +74,16 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if done {
-			return m, m.advance(step)
+			cmd := m.advance(step)
+			return m, cmd
 		}
 		return m, cmd
 	}
 	if key, ok := msg.(tea.KeyMsg); ok {
 		done, cmd := step.Update(key)
 		if done {
-			return m, m.advance(step)
+			cmd := m.advance(step)
+			return m, cmd
 		}
 		return m, cmd
 	}
@@ -77,6 +101,20 @@ func (m *wizardModel) advance(step Step) tea.Cmd {
 	}
 	if ds, ok := step.(DynamicStep); ok {
 		if next := ds.NextSteps(completed); next != nil {
+			seen := make(map[string]bool, idx+1+len(next))
+			for i := 0; i <= idx; i++ {
+				seen[m.steps[i].Key()] = true
+			}
+			if err := validateStepList(next, seen); err != nil {
+				m.failed = true
+				m.failure = err
+				return tea.Quit
+			}
+			for _, s := range next {
+				if l, ok := s.(*LoadStep); ok {
+					l.ctx = m.ctx
+				}
+			}
 			m.steps = append(m.steps[:idx+1:idx+1], next...)
 		}
 	}
@@ -89,7 +127,13 @@ func (m *wizardModel) advance(step Step) tea.Cmd {
 		m.done = true
 		return tea.Quit
 	}
-	return m.steps[m.current].Init(m.st)
+	nextStep := m.steps[m.current]
+	if m.width > 0 {
+		if ms, ok := nextStep.(MessageStep); ok {
+			ms.UpdateMsg(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		}
+	}
+	return nextStep.Init(m.st)
 }
 func (m wizardModel) View() string {
 	var b strings.Builder
@@ -98,11 +142,21 @@ func (m wizardModel) View() string {
 		if _, ok := step.(*LoadStep); ok && a == "" {
 			continue
 		}
-		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.stepLabel.Render(step.Question()) + "\n")
-		b.WriteString(m.st.pipe.Render("│") + "  " + step.ResultView(m.st) + "\n" + m.st.pipe.Render("│") + "\n")
+		q := step.Question()
+		ans := step.ResultView(m.st)
+		if m.width > 6 {
+			q = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(q)
+			ans = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(ans)
+		}
+		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.stepLabel.Render(q) + "\n")
+		b.WriteString(m.st.pipe.Render("│") + "  " + ans + "\n" + m.st.pipe.Render("│") + "\n")
 	}
 	if m.failed {
-		return b.String() + "\n" + m.st.error.Render(fmt.Sprintf("✗ %v", m.failure)) + "\n"
+		errText := fmt.Sprintf("✗ %v", m.failure)
+		if m.width > 6 {
+			errText = lipgloss.NewStyle().MaxWidth(m.width - 2).Render(errText)
+		}
+		return b.String() + "\n" + m.st.error.Render(errText) + "\n"
 	}
 	if m.done {
 		if m.showDone {
@@ -112,7 +166,11 @@ func (m wizardModel) View() string {
 	}
 	if m.current < len(m.steps) {
 		s := m.steps[m.current]
-		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.activeQ.Render(s.Question()) + "\n" + s.View(m.st))
+		q := s.Question()
+		if m.width > 6 {
+			q = lipgloss.NewStyle().MaxWidth(m.width - 4).Render(q)
+		}
+		b.WriteString(m.st.marker.Render("◆") + "  " + m.st.activeQ.Render(q) + "\n" + s.View(m.st))
 	}
 	return b.String()
 }

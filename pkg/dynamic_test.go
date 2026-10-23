@@ -1,6 +1,8 @@
 package stepflow
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -133,5 +135,150 @@ func TestDynamicStepEmptyNextFinishesWizard(t *testing.T) {
 
 	if got := m.result.Get("scan"); got != "done" {
 		t.Fatalf("expected result[scan]=done, got %q", got)
+	}
+}
+
+func TestDynamicStepValidationFailures(t *testing.T) {
+	tests := []struct {
+		name        string
+		dynamicNext []Step
+		errContains string
+	}{
+		{
+			name:        "nil step in dynamic steps",
+			dynamicNext: []Step{nil},
+			errContains: "is nil",
+		},
+		{
+			name:        "empty key in dynamic step",
+			dynamicNext: []Step{Text("", "No key")},
+			errContains: "has empty key",
+		},
+		{
+			name:        "duplicate key with earlier completed step",
+			dynamicNext: []Step{Text("initial", "Duplicate")},
+			errContains: "duplicate step key \"initial\"",
+		},
+		{
+			name:        "duplicate key within dynamic steps",
+			dynamicNext: []Step{Text("dup", "First"), Text("dup", "Second")},
+			errContains: "duplicate step key \"dup\"",
+		},
+		{
+			name:        "loader step without worker in dynamic steps",
+			dynamicNext: []Step{Load("fetch", "Fetch")},
+			errContains: "has no worker",
+		},
+		{
+			name:        "list step with zero visible rows in dynamic steps",
+			dynamicNext: []Step{List("list", "List").VisibleRows(0)},
+			errContains: "needs positive VisibleRows",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := newStyles(DefaultTheme())
+			initial := Confirm("initial", "Initial").
+				WithNext(func(Result) []Step {
+					return tt.dynamicNext
+				})
+
+			m := newWizardModel([]Step{initial}, st, false)
+			// Simulate pressing enter to complete initial step
+			updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m = updated.(wizardModel)
+
+			if !m.failed {
+				t.Fatalf("expected wizard to fail validation, but it succeeded")
+			}
+			if cmd == nil {
+				t.Fatalf("expected quit command on validation failure")
+			}
+			if m.failure == nil || !strings.Contains(m.failure.Error(), tt.errContains) {
+				t.Fatalf("expected failure error containing %q, got: %v", tt.errContains, m.failure)
+			}
+			// Verify View() renders error gracefully
+			view := m.View()
+			if !strings.Contains(view, tt.errContains) {
+				t.Fatalf("expected view to contain error text, got: %q", view)
+			}
+		})
+	}
+}
+
+func TestDynamicLoadStepReceivesContext(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	type testCtxKey struct{}
+	ctx := context.WithValue(context.Background(), testCtxKey{}, "custom_context_value")
+
+	var receivedCtx context.Context
+	loaderRan := false
+
+	loadStep := Load("dynamic_load", "Loading dynamic data").
+		RunContext(func(c context.Context, status chan<- string) (string, error) {
+			loaderRan = true
+			receivedCtx = c
+			status <- "running"
+			return "loaded_ok", nil
+		})
+
+	initial := Confirm("start", "Start?").
+		WithNext(func(Result) []Step {
+			return []Step{loadStep}
+		})
+
+	m := newWizardModel([]Step{initial}, st, true, ctx)
+
+	// Advance past initial step
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(wizardModel)
+
+	if m.failed {
+		t.Fatalf("unexpected validation failure: %v", m.failure)
+	}
+
+	// Verify the dynamic LoadStep received m.ctx
+	if loadStep.ctx == nil {
+		t.Fatal("expected dynamic LoadStep to receive wizard context, got nil")
+	}
+	if val, ok := loadStep.ctx.Value(testCtxKey{}).(string); !ok || val != "custom_context_value" {
+		t.Fatalf("expected context value 'custom_context_value', got %v", loadStep.ctx.Value(testCtxKey{}))
+	}
+
+	// Initialize the load step and run its command
+	cmd := m.steps[m.current].Init(st)
+	if cmd == nil {
+		t.Fatal("expected non-nil Init command for LoadStep")
+	}
+
+	// Advance through load step messages
+	updated, _ = m.Update(loadTickMsg{})
+	m = updated.(wizardModel)
+
+	updated, _ = m.Update(loadDoneMsg{value: "loaded_ok"})
+	m = updated.(wizardModel)
+
+	if !m.done {
+		t.Fatal("expected wizard to complete after dynamic load step")
+	}
+	if !loaderRan {
+		// Run the cmd to verify worker execution
+		msg := cmd()
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if c != nil {
+					m := c()
+					if done, ok := m.(loadDoneMsg); ok && done.value == "loaded_ok" {
+						loaderRan = true
+					}
+				}
+			}
+		}
+	}
+	if receivedCtx != nil {
+		if val, ok := receivedCtx.Value(testCtxKey{}).(string); !ok || val != "custom_context_value" {
+			t.Fatalf("worker did not receive custom context, got %v", receivedCtx)
+		}
 	}
 }

@@ -10,6 +10,7 @@ type TextStep struct {
 	key, question, placeholder, defaultVal string
 	input                                  textinput.Model
 	next                                   func(Result) []Step
+	width                                  int
 }
 
 func Text(key, question string) *TextStep          { return &TextStep{key: key, question: question} }
@@ -30,11 +31,24 @@ func (s *TextStep) NextSteps(r Result) []Step {
 	}
 	return nil
 }
+func (s *TextStep) reset() {
+	s.input.SetValue(s.defaultVal)
+}
 func (s *TextStep) Init(st styles) tea.Cmd {
 	ti := textinput.New()
 	ti.Placeholder = s.placeholder
 	ti.CharLimit = 2048
 	ti.Width = 72
+	if s.width > 6 {
+		w := s.width - 4
+		if w > 72 {
+			w = 72
+		}
+		if w < 10 {
+			w = 10
+		}
+		ti.Width = w
+	}
 	ti.PromptStyle = ti.PromptStyle.Foreground(st.marker.GetForeground())
 	ti.TextStyle = ti.TextStyle.Foreground(st.stepAnswer.GetForeground())
 	ti.SetValue(s.defaultVal)
@@ -49,13 +63,35 @@ func (s *TextStep) Update(msg tea.KeyMsg) (bool, tea.Cmd) {
 	s.input, cmd = s.input.Update(msg)
 	return false, cmd
 }
+func (s *TextStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
+	switch m := msg.(type) {
+	case tea.KeyMsg:
+		return s.Update(m)
+	case tea.WindowSizeMsg:
+		s.width = m.Width
+		if m.Width > 6 {
+			w := m.Width - 4
+			if w > 72 {
+				w = 72
+			}
+			if w < 10 {
+				w = 10
+			}
+			s.input.Width = w
+		}
+	}
+	var cmd tea.Cmd
+	s.input, cmd = s.input.Update(msg)
+	return false, cmd
+}
+func (s *TextStep) HasError() bool { return false }
 func (s *TextStep) UpdateOther(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	s.input, cmd = s.input.Update(msg)
 	return cmd
 }
 func (s *TextStep) View(st styles) string {
-	return s.input.View() + "\n" + st.helper.Render("enter to confirm") + "\n"
+	return s.input.View() + "\n" + "  " + st.helper.Render("enter to confirm") + "\n"
 }
 func (s *TextStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
 func (s *TextStep) Answer() string {

@@ -207,3 +207,142 @@ func TestLoadStepWorkerFailure(t *testing.T) {
 		t.Fatal("expected step error state on load")
 	}
 }
+
+func TestWizardRepeatedRuns(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	textStep := Text("name", "Name").Default("initial-name")
+	confirmStep := Confirm("deploy", "Deploy?").Default("no")
+	listStep := List("fruit", "Pick Fruit").
+		Items(Item("Apple"), Item("Banana"), Item("Cherry")).
+		PreSelect("Banana")
+	loadStep := Load("sync", "Syncing").Run(func(status chan<- string) (string, error) {
+		return "synced", nil
+	})
+
+	w := New().WithSteps(textStep, confirmStep, listStep, loadStep)
+
+	// Simulate Run 1 mutations:
+	// 1. Text input has value edited
+	textStep.Init(st)
+	textStep.input.SetValue("edited-name")
+	if textStep.Answer() != "edited-name" {
+		t.Fatalf("expected edited-name, got %q", textStep.Answer())
+	}
+
+	// 2. Confirm cursor is moved up to "Yes"
+	confirmStep.Init(st)
+	confirmStep.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if confirmStep.Answer() != "Yes" {
+		t.Fatalf("expected Yes after moving up, got %q", confirmStep.Answer())
+	}
+
+	// 3. List selections are changed to Cherry only
+	listStep.Init(st)
+	listStep.Update(tea.KeyMsg{Type: tea.KeyDown})
+	listStep.Update(tea.KeyMsg{Type: tea.KeyDown})
+	listStep.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if listStep.Answer() != "Cherry" {
+		t.Fatalf("expected Cherry, got %q", listStep.Answer())
+	}
+
+	// 4. Load step finished
+	loadStep.Init(st)
+	loadStep.UpdateMsg(loadDoneMsg{value: "synced"})
+	if !loadStep.finished || loadStep.Answer() != "synced" {
+		t.Fatalf("expected finished load step, got %v / %q", loadStep.finished, loadStep.Answer())
+	}
+
+	// Now call w.Reset() (which is also called at the start of Run / RunContext)
+	w.Reset()
+
+	// Verify all steps are restored to their configured initial states:
+	if ans := textStep.Answer(); ans != "initial-name" {
+		t.Fatalf("expected text step reset to 'initial-name', got %q", ans)
+	}
+
+	if ans := confirmStep.Answer(); ans != "No" {
+		t.Fatalf("expected confirm step reset to default 'No', got %q", ans)
+	}
+
+	if ans := listStep.Answer(); ans != "Banana" {
+		t.Fatalf("expected list step reset to preselected 'Banana', got %q", ans)
+	}
+
+	if loadStep.finished || loadStep.Answer() != "" {
+		t.Fatalf("expected load step reset, finished=%v, answer=%q", loadStep.finished, loadStep.Answer())
+	}
+}
+
+func TestLoadStepRapidStatusAndCancellation(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sentinelErr := errors.New("worker canceled cooperatively")
+	sentCount := 0
+
+	load := Load("rapid", "Rapid sending").
+		RunContext(func(c context.Context, status chan<- string) (string, error) {
+			for i := 0; i < 200; i++ {
+				select {
+				case <-c.Done():
+					return "", sentinelErr
+				case status <- "working":
+					sentCount++
+				}
+			}
+			return "done", nil
+		})
+
+	load.ctx = ctx
+	cmd := load.Init(st)
+	if cmd == nil {
+		t.Fatal("expected Init command")
+	}
+
+	// Cancel context while work is in flight
+	cancel()
+
+	// Run worker command
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c != nil {
+				res := c()
+				if errMsg, ok := res.(loadErrMsg); ok {
+					if !errors.Is(errMsg.err, sentinelErr) {
+						t.Fatalf("expected %v, got %v", sentinelErr, errMsg.err)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestLoadStepPreCanceledContext(t *testing.T) {
+	st := newStyles(DefaultTheme())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-canceled
+
+	workerCalled := false
+	load := Load("pre", "Pre-canceled").
+		RunContext(func(c context.Context, status chan<- string) (string, error) {
+			workerCalled = true
+			return "ok", nil
+		})
+
+	load.ctx = ctx
+	cmd := load.Init(st)
+	if cmd == nil {
+		t.Fatal("expected non-nil Init command")
+	}
+
+	msg := cmd()
+	if errMsg, ok := msg.(loadErrMsg); !ok || !errors.Is(errMsg.err, context.Canceled) {
+		t.Fatalf("expected context.Canceled error msg, got %#v", msg)
+	}
+
+	if workerCalled {
+		t.Fatal("worker should not have been called when context was pre-canceled")
+	}
+}

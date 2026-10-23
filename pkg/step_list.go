@@ -1,10 +1,14 @@
 package stepflow
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
-	tea "github.com/charmbracelet/bubbletea"
 	"strings"
 	"unicode/utf8"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type ListItem struct{ Label, Meta string }
@@ -30,6 +34,8 @@ type ListStep struct {
 	next                        func(Result) []Step
 	pinnedTitle, pinnedNote     string
 	pinnedItems                 []string
+	preselected                 []string
+	width                       int
 }
 
 func List(key, question string) *ListStep {
@@ -40,6 +46,7 @@ func (s *ListStep) Items(items ...ListItem) *ListStep {
 	for i, it := range items {
 		s.items[i] = listEntry{item: it}
 	}
+	s.applyPreselected()
 	return s
 }
 func (s *ListStep) MultiSelect(v bool) *ListStep { s.multi = v; return s }
@@ -50,25 +57,51 @@ func (s *ListStep) Pinned(title, note string, items ...string) *ListStep {
 	s.pinnedItems = items
 	return s
 }
-func (s *ListStep) PreSelect(labels ...string) *ListStep {
+func (s *ListStep) applyPreselected() {
+	if len(s.preselected) == 0 {
+		return
+	}
 	set := map[string]bool{}
-	for _, v := range labels {
+	for _, v := range s.preselected {
 		set[v] = true
 	}
 	for i := range s.items {
 		s.items[i].selected = set[s.items[i].item.Label]
 	}
+}
+func (s *ListStep) PreSelect(labels ...string) *ListStep {
+	s.preselected = append([]string(nil), labels...)
+	s.applyPreselected()
 	return s
 }
 func (s *ListStep) WithNext(f func(Result) []Step) *ListStep { s.next = f; return s }
 func (s *ListStep) Key() string                              { return s.key }
 func (s *ListStep) Question() string                         { return s.question }
-func (s *ListStep) Init(styles) tea.Cmd {
+func (s *ListStep) reset() {
 	s.search = ""
 	s.offset = 0
+	s.cursor = 0
+	for i := range s.items {
+		s.items[i].selected = false
+	}
+	s.applyPreselected()
 	s.ensureCursorValid()
+}
+func (s *ListStep) Init(styles) tea.Cmd {
+	s.reset()
 	return nil
 }
+func (s *ListStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
+	switch m := msg.(type) {
+	case tea.KeyMsg:
+		return s.Update(m)
+	case tea.WindowSizeMsg:
+		s.width = m.Width
+		return false, nil
+	}
+	return false, nil
+}
+func (s *ListStep) HasError() bool { return false }
 func (s *ListStep) NextSteps(r Result) []Step {
 	if s.next != nil {
 		return s.next(r)
@@ -179,19 +212,49 @@ func (s *ListStep) selectedLabels() []string {
 	}
 	return out
 }
-func (s *ListStep) Answer() string { return strings.Join(s.selectedLabels(), ", ") }
-func (s *ListStep) View(st styles) string {
-	var b strings.Builder
-	if len(s.pinnedItems) > 0 {
-		b.WriteString("── " + s.pinnedTitle + " (" + s.pinnedNote + ") ──\n")
-		for _, v := range s.pinnedItems {
-			b.WriteString("  •  " + v + "\n")
+func (s *ListStep) Answer() string {
+	labels := s.selectedLabels()
+	if len(labels) == 0 {
+		return ""
+	}
+	if !s.multi {
+		return labels[0]
+	}
+	needsQuote := false
+	for _, l := range labels {
+		if strings.ContainsAny(l, ",\"\n\r") {
+			needsQuote = true
+			break
 		}
 	}
-	b.WriteString("  " + st.searchSlash.Render("/") + " " + st.searchText.Render(s.search) + st.searchCur.Render("█") + "\n")
+	if !needsQuote {
+		return strings.Join(labels, ", ")
+	}
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	_ = w.Write(labels)
+	w.Flush()
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+func (s *ListStep) View(st styles) string {
+	var b strings.Builder
+	writeLine := func(line string) {
+		if s.width > 6 {
+			line = lipgloss.NewStyle().MaxWidth(s.width - 2).Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	if len(s.pinnedItems) > 0 {
+		writeLine("── " + s.pinnedTitle + " (" + s.pinnedNote + ") ──")
+		for _, v := range s.pinnedItems {
+			writeLine("  •  " + v)
+		}
+	}
+	writeLine("  " + st.searchSlash.Render("/") + " " + st.searchText.Render(s.search) + st.searchCur.Render("█"))
 	ids := s.filtered()
 	if len(ids) == 0 {
-		b.WriteString("  " + st.helper.Render("No matching items") + "\n")
+		writeLine("  " + st.helper.Render("No matching items"))
 	}
 	rows := s.visibleRows
 	if rows < 1 {
@@ -222,20 +285,20 @@ func (s *ListStep) View(st styles) string {
 		if idx == s.cursor {
 			label = st.focusLabel.Render(e.item.Label)
 		}
-		b.WriteString(fmt.Sprintf(" %s  %s  %s", cursor, dot, label))
+		line := fmt.Sprintf(" %s  %s  %s", cursor, dot, label)
 		if e.item.Meta != "" {
-			b.WriteString("  " + st.itemPath.Render(e.item.Meta))
+			line += "  " + st.itemPath.Render(e.item.Meta)
 		}
-		b.WriteString("\n")
+		writeLine(line)
 	}
 	if len(ids) > rows {
-		b.WriteString(fmt.Sprintf("  %d / %d\n", s.cursorPos(ids)+1, len(ids)))
+		writeLine(fmt.Sprintf("  %d / %d", s.cursorPos(ids)+1, len(ids)))
 	}
-	b.WriteString("  " + st.helper.Render("Selected: ") + st.pillItem.Render(strings.Join(s.selectedLabels(), " · ")) + "\n")
+	writeLine("  " + st.helper.Render("Selected: ") + st.pillItem.Render(strings.Join(s.selectedLabels(), " · ")))
 	if s.multi {
-		b.WriteString("  " + st.helper.Render("↑↓ navigate · space toggle · enter confirm · esc clear search") + "\n")
+		writeLine("  " + st.helper.Render("↑↓ navigate · space toggle · enter confirm · esc clear search"))
 	} else {
-		b.WriteString("  " + st.helper.Render("↑↓ navigate · enter select · esc clear search") + "\n")
+		writeLine("  " + st.helper.Render("↑↓ navigate · enter select · esc clear search"))
 	}
 	return b.String()
 }

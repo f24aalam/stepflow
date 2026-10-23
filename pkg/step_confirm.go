@@ -8,16 +8,18 @@ import (
 type ConfirmStep struct {
 	key, question string
 	cursor        int
+	defaultCursor int
 	next          func(Result) []Step
 }
 
 func Confirm(key, question string) *ConfirmStep { return &ConfirmStep{key: key, question: question} }
 func (s *ConfirmStep) Default(d string) *ConfirmStep {
 	if strings.EqualFold(d, "no") {
-		s.cursor = 1
+		s.defaultCursor = 1
 	} else {
-		s.cursor = 0
+		s.defaultCursor = 0
 	}
+	s.cursor = s.defaultCursor
 	return s
 }
 func (s *ConfirmStep) WithNext(f func(Result) []Step) *ConfirmStep { s.next = f; return s }
@@ -29,7 +31,13 @@ func (s *ConfirmStep) NextSteps(r Result) []Step {
 	}
 	return nil
 }
-func (s *ConfirmStep) Init(styles) tea.Cmd { return nil }
+func (s *ConfirmStep) reset() {
+	s.cursor = s.defaultCursor
+}
+func (s *ConfirmStep) Init(styles) tea.Cmd {
+	s.reset()
+	return nil
+}
 func (s *ConfirmStep) Update(k tea.KeyMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "up", "k":
@@ -50,7 +58,7 @@ func (s *ConfirmStep) View(st styles) string {
 			v += "     " + st.stepAnswer.Render(label) + "\n"
 		}
 	}
-	return v + st.helper.Render("↑↓ move · enter confirm") + "\n"
+	return v + "  " + st.helper.Render("↑↓ move · enter confirm") + "\n"
 }
 func (s *ConfirmStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
 func (s *ConfirmStep) Answer() string {

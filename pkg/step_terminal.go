@@ -1,8 +1,10 @@
 package stepflow
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type terminalKind int
@@ -16,6 +18,7 @@ type TerminalStep struct {
 	key, question, body string
 	kind                terminalKind
 	next                func(Result) []Step
+	width               int
 }
 
 func Success(key, q string) *TerminalStep { return &TerminalStep{key: key, question: q} }
@@ -42,11 +45,16 @@ func (s *TerminalStep) Init(styles) tea.Cmd {
 	return nil
 }
 func (s *TerminalStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
-	if _, ok := msg.(termDoneMsg); ok {
+	switch m := msg.(type) {
+	case termDoneMsg:
 		return true, nil
-	}
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
-		return true, nil
+	case tea.KeyMsg:
+		if m.String() == "enter" {
+			return true, nil
+		}
+	case tea.WindowSizeMsg:
+		s.width = m.Width
+		return false, nil
 	}
 	return false, nil
 }
@@ -62,13 +70,18 @@ func (s *TerminalStep) View(st styles) string {
 		body = "Done."
 	}
 	for _, line := range strings.Split(body, "\n") {
+		var rendered string
 		if s.kind == terminalKindError {
-			v += "   " + st.error.Render(line) + "\n"
+			rendered = st.error.Render(line)
 		} else {
-			v += "   " + st.done.Render(line) + "\n"
+			rendered = st.done.Render(line)
 		}
+		if s.width > 6 {
+			rendered = lipgloss.NewStyle().MaxWidth(s.width - 4).Render(rendered)
+		}
+		v += "  " + rendered + "\n"
 	}
-	return v + st.helper.Render("enter to continue") + "\n"
+	return v + "  " + st.helper.Render("enter to continue") + "\n"
 }
 func (s *TerminalStep) ResultView(st styles) string {
 	if s.kind == terminalKindError {

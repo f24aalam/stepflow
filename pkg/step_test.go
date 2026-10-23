@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestTextStep(t *testing.T) {
@@ -366,5 +367,155 @@ func TestResultHelpers(t *testing.T) {
 	}
 	if r.Strings("empty_multi") != nil || r.Strings("nonexistent") != nil {
 		t.Fatal("expected nil slice for empty/missing Strings key")
+	}
+}
+
+func TestMultiSelectWithCommasAndQuotes(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	// Test 1: Labels with commas and quotes in multi-select
+	list := List("authors", "Select authors").
+		MultiSelect(true).
+		Items(
+			Item("Smith, John"),
+			Item("Doe, Jane"),
+			Item("Plain"),
+			Item(`O'Connor, "Bob"`),
+		).
+		PreSelect("Smith, John", "Doe, Jane", `O'Connor, "Bob"`)
+
+	list.Init(st)
+
+	ans := list.Answer()
+	r := Result{"authors": ans}
+
+	got := r.Strings("authors")
+	expected := []string{"Smith, John", "Doe, Jane", `O'Connor, "Bob"`}
+
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d items, got %d: %#v", len(expected), len(got), got)
+	}
+	for i, exp := range expected {
+		if got[i] != exp {
+			t.Errorf("item %d: expected %q, got %q", i, exp, got[i])
+		}
+	}
+
+	// Verify Result.Get returns non-empty representation
+	if r.Get("authors") == "" {
+		t.Fatal("expected non-empty Get value")
+	}
+
+	// Test 2: Single-select with comma in label
+	single := List("author", "Select author").
+		Items(Item("Smith, John")).
+		PreSelect("Smith, John")
+	single.Init(st)
+	if single.Answer() != "Smith, John" {
+		t.Fatalf("expected 'Smith, John', got %q", single.Answer())
+	}
+	rSingle := Result{"author": single.Answer()}
+	if rSingle.Get("author") != "Smith, John" {
+		t.Fatalf("expected 'Smith, John', got %q", rSingle.Get("author"))
+	}
+
+	// Test 3: Backward compatibility with unquoted comma-separated string
+	legacyResult := Result{"tags": "go, cli, tui"}
+	tags := legacyResult.Strings("tags")
+	if len(tags) != 3 || tags[0] != "go" || tags[1] != "cli" || tags[2] != "tui" {
+		t.Fatalf("unexpected legacy tags split: %#v", tags)
+	}
+}
+
+func TestTerminalResizing(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	// 1. TextStep reacts to terminal width
+	text := Text("query", "Search query").Default("abc")
+	text.Init(st)
+
+	// Default width is 72
+	if text.input.Width != 72 {
+		t.Fatalf("expected default width 72, got %d", text.input.Width)
+	}
+
+	// Narrow terminal (width 36)
+	text.UpdateMsg(tea.WindowSizeMsg{Width: 36, Height: 20})
+	if text.input.Width != 32 {
+		t.Fatalf("expected width to resize to 32 (36-4), got %d", text.input.Width)
+	}
+
+	// Wide terminal (width 120) caps at 72
+	text.UpdateMsg(tea.WindowSizeMsg{Width: 120, Height: 20})
+	if text.input.Width != 72 {
+		t.Fatalf("expected width capped at 72, got %d", text.input.Width)
+	}
+
+	// 2. ListStep reacts to terminal width and avoids overflow
+	longLabel := strings.Repeat("VeryLongOptionName", 10)
+	list := List("opts", "Choose option").
+		Items(Item(longLabel, "description that is also long"))
+	list.Init(st)
+
+	// Set narrow terminal width 40
+	list.UpdateMsg(tea.WindowSizeMsg{Width: 40, Height: 20})
+	view := list.View(st)
+
+	// Verify lines do not exceed terminal width (excluding ANSI escape codes)
+	for _, line := range strings.Split(view, "\n") {
+		// When strip or lipgloss width is checked:
+		lineWidth := lipgloss.Width(line)
+		if lineWidth > 40 {
+			t.Errorf("list view line exceeded terminal width 40: width was %d for line %q", lineWidth, line)
+		}
+	}
+
+	// 3. InfoStep with narrow terminal
+	longBody := strings.Repeat("Long informational text paragraph. ", 5)
+	info := Info("info", "Information").Body(longBody)
+	info.UpdateMsg(tea.WindowSizeMsg{Width: 50, Height: 20})
+	infoView := info.View(st)
+	for _, line := range strings.Split(infoView, "\n") {
+		if lipgloss.Width(line) > 50 {
+			t.Errorf("info view line exceeded terminal width 50: width was %d", lipgloss.Width(line))
+		}
+	}
+}
+
+func TestCompactSpacingAndRender(t *testing.T) {
+	st := newStyles(DefaultTheme())
+
+	// Check helper text indentation across all steps:
+	// TextStep helper has 2-space indentation
+	text := Text("k", "Q")
+	text.Init(st)
+	if !strings.Contains(text.View(st), "  "+st.helper.Render("enter to confirm")) {
+		t.Fatalf("expected TextStep helper with 2-space indentation, got: %q", text.View(st))
+	}
+
+	// ConfirmStep helper has 2-space indentation
+	confirm := Confirm("k", "Q")
+	confirm.Init(st)
+	if !strings.Contains(confirm.View(st), "  "+st.helper.Render("↑↓ move · enter confirm")) {
+		t.Fatalf("expected ConfirmStep helper with 2-space indentation, got: %q", confirm.View(st))
+	}
+
+	// ListStep helper has 2-space indentation
+	list := List("k", "Q").Items(Item("A"))
+	list.Init(st)
+	if !strings.Contains(list.View(st), "  "+st.helper.Render("↑↓ navigate · enter select · esc clear search")) {
+		t.Fatalf("expected ListStep helper with 2-space indentation, got: %q", list.View(st))
+	}
+
+	// InfoStep helper has 2-space indentation
+	info := Info("k", "Q")
+	if !strings.Contains(info.View(st), "  "+st.helper.Render("enter to continue")) {
+		t.Fatalf("expected InfoStep helper with 2-space indentation, got: %q", info.View(st))
+	}
+
+	// TerminalStep helper has 2-space indentation
+	term := Success("k", "Q").WithNext(func(Result) []Step { return nil })
+	if !strings.Contains(term.View(st), "  "+st.helper.Render("enter to continue")) {
+		t.Fatalf("expected TerminalStep helper with 2-space indentation, got: %q", term.View(st))
 	}
 }

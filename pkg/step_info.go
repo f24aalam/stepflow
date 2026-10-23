@@ -1,13 +1,16 @@
 package stepflow
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type InfoStep struct {
 	key, question, body string
 	next                func(Result) []Step
+	width               int
 }
 
 func Info(key, question string) *InfoStep                    { return &InfoStep{key: key, question: question} }
@@ -23,6 +26,17 @@ func (s *InfoStep) NextSteps(r Result) []Step {
 	return nil
 }
 func (s *InfoStep) Update(k tea.KeyMsg) (bool, tea.Cmd) { return k.String() == "enter", nil }
+func (s *InfoStep) UpdateMsg(msg tea.Msg) (bool, tea.Cmd) {
+	switch m := msg.(type) {
+	case tea.KeyMsg:
+		return s.Update(m)
+	case tea.WindowSizeMsg:
+		s.width = m.Width
+		return false, nil
+	}
+	return false, nil
+}
+func (s *InfoStep) HasError() bool { return false }
 func (s *InfoStep) View(st styles) string {
 	body := strings.TrimSpace(s.body)
 	if body == "" {
@@ -30,9 +44,13 @@ func (s *InfoStep) View(st styles) string {
 	}
 	v := ""
 	for _, line := range strings.Split(body, "\n") {
-		v += "   " + st.stepAnswer.Render(line) + "\n"
+		rendered := st.stepAnswer.Render(line)
+		if s.width > 6 {
+			rendered = lipgloss.NewStyle().MaxWidth(s.width - 4).Render(rendered)
+		}
+		v += "  " + rendered + "\n"
 	}
-	return v + st.helper.Render("enter to continue") + "\n"
+	return v + "  " + st.helper.Render("enter to continue") + "\n"
 }
 func (s *InfoStep) ResultView(st styles) string { return st.stepAnswer.Render(s.Answer()) }
 func (s *InfoStep) Answer() string              { return "shown" }
