@@ -71,7 +71,11 @@ func TestWizardContextPreCanceled(t *testing.T) {
 }
 
 func TestWizardOptionsConfig(t *testing.T) {
-	th := DefaultTheme()
+	th := NewTheme("#06b6d4", "#a855f7", "#64748b")
+	if th.Primary != "#06b6d4" || th.Accent != "#a855f7" || th.Muted != "#64748b" {
+		t.Fatalf("unexpected NewTheme colors: %#v", th)
+	}
+
 	w := New().
 		WithAltScreen(true).
 		WithDoneScreen(false).

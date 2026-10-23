@@ -10,16 +10,13 @@ import (
 )
 
 func main() {
-	// Customize colors based on DefaultTheme()
-	cyberpunk := stepflow.DefaultTheme()
-	cyberpunk.MarkerColor = lipgloss.Color("#06b6d4")         // Cyan
-	cyberpunk.PipeColor = lipgloss.Color("#0891b2")           // Dark Cyan
-	cyberpunk.FocusBarColor = lipgloss.Color("#a855f7")       // Purple bar
-	cyberpunk.FocusLabelColor = lipgloss.Color("#c084fc")     // Bright lavender
-	cyberpunk.StepLabelColor = lipgloss.Color("#38bdf8")      // Sky blue
-	cyberpunk.ActiveQuestionColor = lipgloss.Color("#f0fdf4") // Light text
-	cyberpunk.PillItemColor = lipgloss.Color("#a855f7")       // Purple pills
-	cyberpunk.DoneColor = lipgloss.Color("#22d3ee")           // Cyan checkmarks
+	// Build a cohesive Cyberpunk palette with 3 semantic colors:
+	// Primary: Cyan, Accent: Purple, Muted: Slate
+	cyberpunk := stepflow.NewTheme(
+		lipgloss.Color("#06b6d4"), // Primary (Cyan markers, question labels, search slash)
+		lipgloss.Color("#a855f7"), // Accent (Purple focus bars, selected dots, pills)
+		lipgloss.Color("#64748b"), // Muted (Slate pipes, unselected circles, meta descriptions, hints)
+	)
 
 	wizard := stepflow.New().
 		WithTheme(cyberpunk).

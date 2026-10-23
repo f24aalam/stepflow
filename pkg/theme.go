@@ -2,22 +2,37 @@ package stepflow
 
 import "github.com/charmbracelet/lipgloss"
 
-// Theme configures the colors used throughout the wizard.
+// Theme configures the semantic colors used throughout the wizard.
 type Theme struct {
-	MarkerColor, PipeColor, StepLabelColor, StepAnswerColor                             lipgloss.Color
-	ActiveQuestionColor, SectionLineColor, SectionLabelColor, AlwaysNoteColor           lipgloss.Color
-	SelectedDotColor, UnselectedDotColor, FocusBarColor, FocusLabelColor, ItemPathColor lipgloss.Color
-	SearchSlashColor, SearchTextColor, SearchCursorFg, SearchCursorBg                   lipgloss.Color
-	ScrollPosColor, ScrollTotalColor, PillBracketColor, PillItemColor                   lipgloss.Color
-	PillDotColor, PillMoreColor, PillNoneColor, HelperTextColor, DoneColor, ErrorColor  lipgloss.Color
+	Primary lipgloss.Color // Brand color: markers, prompt symbols, completed questions, search slash
+	Accent  lipgloss.Color // Focus/Selection: active cursor bar, focused text, selected dots, pills
+	Muted   lipgloss.Color // Subdued/Secondary: pipes, unselected circles, meta descriptions, helper text
+	Text    lipgloss.Color // Readable content: unselected items, answer text, body lines
+	Success lipgloss.Color // Completion and success indicators
+	Error   lipgloss.Color // Failure and error indicators
 }
 
+// NewTheme creates a complete, cohesive theme from primary, accent, and muted colors.
+// Text, Success, and Error are initialized with sensible defaults.
+func NewTheme(primary, accent, muted lipgloss.Color) Theme {
+	return Theme{
+		Primary: primary,
+		Accent:  accent,
+		Muted:   muted,
+		Text:    lipgloss.Color("#f8fafc"),
+		Success: lipgloss.Color("#10b981"),
+		Error:   lipgloss.Color("#ef4444"),
+	}
+}
+
+// DefaultTheme returns Stepflow's signature cohesive green palette.
 func DefaultTheme() Theme {
 	return Theme{
-		MarkerColor: "#4ade80", PipeColor: "#15803d", StepLabelColor: "#22c55e", StepAnswerColor: "#bbf7d0", ActiveQuestionColor: "#ecfdf5",
-		SectionLineColor: "#14532d", SectionLabelColor: "#166534", AlwaysNoteColor: "#4ade80", SelectedDotColor: "#4ade80", UnselectedDotColor: "#14532d",
-		FocusBarColor: "#4ade80", FocusLabelColor: "#4ade80", ItemPathColor: "#15803d", SearchSlashColor: "#4ade80", SearchTextColor: "#ecfdf5",
-		SearchCursorFg: "#052e16", SearchCursorBg: "#4ade80", ScrollPosColor: "#22c55e", ScrollTotalColor: "#166534", PillBracketColor: "#15803d",
-		PillItemColor: "#4ade80", PillDotColor: "#22c55e", PillMoreColor: "#86efac", PillNoneColor: "#14532d", HelperTextColor: "#22c55e", DoneColor: "#4ade80", ErrorColor: "#ef4444",
+		Primary: lipgloss.Color("#22c55e"), // Bright green
+		Accent:  lipgloss.Color("#4ade80"), // Light emerald focus
+		Muted:   lipgloss.Color("#15803d"), // Subdued forest green
+		Text:    lipgloss.Color("#ecfdf5"), // Light mint text
+		Success: lipgloss.Color("#4ade80"), // Green checkmark
+		Error:   lipgloss.Color("#ef4444"), // Red error
 	}
 }

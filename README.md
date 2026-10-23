@@ -35,7 +35,7 @@ Multi-select results are comma-separated strings for compatibility. For uncompli
 
 `Run()` returns `(Result,error)`. `RunContext(ctx)` additionally accepts cancellation. `errors.Is(err, stepflow.ErrCancelled)` identifies interactive cancellation. Loading failures propagate their original error. Legacy `.Run(fn)` workers have no cancellation mechanism; use `.RunContext(fn)` when cancellation matters, and send status messages with a `select` that includes `ctx.Done()`.
 
-Default terminal rendering uses the normal screen; opt in to the alternate screen with `.WithAltScreen(true)`. Colors are configured with `.WithTheme(stepflow.DefaultTheme())`. See [theme.go](pkg/theme.go).
+Default terminal rendering uses the normal screen; opt in to the alternate screen with `.WithAltScreen(true)`. Colors are configured with `.WithTheme(stepflow.DefaultTheme())` or custom palettes via `.WithTheme(stepflow.NewTheme(primary, accent, muted))`. See [theme.go](pkg/theme.go).
 
 List controls: arrows navigate, type to filter, Space toggles multi-select, Enter confirms, Esc clears filter. Ctrl+C cancels the wizard.
 
