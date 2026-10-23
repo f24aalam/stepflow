@@ -106,7 +106,7 @@ func (m wizardModel) View() string {
 	}
 	if m.done {
 		if m.showDone {
-			b.WriteString("\n" + m.st.done.Render("✓  All done!") + "\n")
+			b.WriteString(m.st.done.Render("✓  All done!") + "\n")
 		}
 		return b.String()
 	}
