@@ -39,6 +39,12 @@ Default terminal rendering uses the normal screen; opt in to the alternate scree
 
 List controls: arrows navigate, type to filter, Space toggles multi-select, Enter confirms, Esc clears filter. Ctrl+C cancels the wizard.
 
-Run example: `go run ./example`.
+## Examples
+
+- **Quick start**: `go run ./example`
+- **Interactive showcase** (all 7 step types & widgets): `go run ./example/showcase`
+- **Dynamic branching** (`.WithNext` conditional flow): `go run ./example/dynamic`
+- **Async loader** (status channel & context cancellation): `go run ./example/loader`
+- **Custom theming & alt screen** (`.WithTheme`, `.WithAltScreen`): `go run ./example/theme`
 
 **Scope:** Stepflow intentionally provides built-in steps, not third-party custom steps: the rendering interface currently uses internal styles. A stable custom-step API is deferred until there is a compelling use case.
